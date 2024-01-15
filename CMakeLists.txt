@@ -178,6 +178,34 @@ elseif(LIBRETRO)
 			target_link_libraries(${PROJECT_NAME} PRIVATE "-lopengl32")
 		endif()
 	endif()
+
+	# add PORTANDROID options
+	if(PORTANDROID)
+		set(distribution_DIR ${CFG_LIBS_DIR})
+		set(import_libs_DIR ${CFG_LIBS_DIR})
+		set(main_entry_source ${CFG_ENTRY_DIR}/emu_${CFG_MODULE_NAME}_main.cpp)
+
+		# add include directories
+		include_directories(${import_libs_DIR}/classicboy/include
+				${import_libs_DIR}/libBlocksRuntime/include
+				${import_libs_DIR}/libcpufeatures/include
+				${import_libs_DIR}/libemu/include
+				${import_libs_DIR}/libemuRetro/include
+				${import_libs_DIR}/libfex/include
+				${import_libs_DIR}/libpng/include
+				${import_libs_DIR}/libzip/include)
+
+		# added imported libraries
+		add_library(lib_emu STATIC IMPORTED)
+		set_target_properties(lib_emu PROPERTIES IMPORTED_LOCATION
+				${import_libs_DIR}/libemu/${CFG_BUILD_TYPE}/${ANDROID_ABI}/libemu.a)
+
+		# added imported libraries
+		add_library(lib_emuRetro STATIC IMPORTED)
+		set_target_properties(lib_emuRetro PROPERTIES IMPORTED_LOCATION
+				${import_libs_DIR}/libemuRetro/${CFG_BUILD_TYPE}/${ANDROID_ABI}/libemuRetro.a)
+	endif()
+
 elseif(ANDROID)
 	add_library(${PROJECT_NAME} SHARED core/emulator.cpp)
 	set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_RELEASE} -O3")
@@ -769,6 +797,10 @@ if(LIBRETRO)
 		shell/libretro/vmu_xhair.cpp)
 	if(APPLE)
 		target_sources(${PROJECT_NAME} PRIVATE shell/libretro/oslib_apple.mm)
+	endif()
+
+	if(PORTANDROID)
+		target_sources(${PROJECT_NAME} PRIVATE ${main_entry_source})
 	endif()
 endif()
 
@@ -1822,6 +1854,22 @@ if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT LIBRETRO)
 			RENAME ${PROJECT_NAME}.png
 		)
 	endforeach()
+endif()
+
+if(LIBRETRO AND PORTANDROID)
+	# rename target and change output directory
+	set_target_properties(${PROJECT_NAME}  PROPERTIES OUTPUT_NAME "libcore_${CFG_MODULE_NAME}")
+	set_target_properties(${PROJECT_NAME}
+		PROPERTIES
+		LIBRARY_OUTPUT_DIRECTORY
+		"${distribution_DIR}/core_${CFG_MODULE_NAME}/${CFG_BUILD_TYPE}/${ANDROID_ABI}")
+
+	#set target link libraries for PORTANDROID
+	target_link_libraries(${PROJECT_NAME} PRIVATE
+		android
+		log
+		lib_emu
+		lib_emuRetro)
 endif()
 
 file(GLOB_RECURSE SRC_FILES *.h *.cpp *.c *.cc *.mm)
