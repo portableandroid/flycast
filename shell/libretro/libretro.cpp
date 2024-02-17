@@ -1981,7 +1981,7 @@ bool retro_load_game(const struct retro_game_info *game)
 			cb_itf.cb_system_subsystem_get(&subsystem);
 			bool is_arcade = false;
 			if(subsystem) {
-				is_arcade = strcasecmp(subsystem, "arcade") == 0;
+				is_arcade = strcasecmp(subsystem, "MAME") == 0;
                 log_cb(RETRO_LOG_INFO, "[%s] File extension is: %s, subsystem = %s\n", __FUNCTION__, ext, subsystem);
 			}
 
