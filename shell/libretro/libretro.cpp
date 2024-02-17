@@ -64,6 +64,10 @@
 #include "cfg/option.h"
 #include "version.h"
 #include "rend/transform_matrix.h"
+#ifdef PORTANDROID
+#define _cb_type_lock_
+#include "emu_retro.h"
+#endif
 
 constexpr char slash = path_default_slash_c();
 
@@ -718,6 +722,7 @@ static void update_variables(bool first_startup)
 	if (!first_startup && per_content_vmus != previous_per_content_vmus
 			&& settings.platform.isConsole())
 	{
+        //Godwin: TODO: get system type to recreate the VMUs.
 		// Recreate the VMUs so that the save location is taken into account.
 		// Don't do this at startup because we don't know the system type yet
 		// and the VMUs haven't been created anyway
@@ -1154,8 +1159,10 @@ static bool loadGame()
 		emu.loadGame(game_data.c_str());
 	} catch (const FlycastException& e) {
 		ERROR_LOG(BOOT, "%s", e.what());
+#ifndef PORTANDROID
 		gui_display_notification(e.what(), 5000);
         retro_unload_game();
+#endif
 		return false;
 	}
 
@@ -1969,6 +1976,36 @@ bool retro_load_game(const struct retro_game_info *game)
 		 * automatically to Naomi or AtomisWave. */
 		if (ext)
 		{
+#ifdef PORTANDROID
+			const char *subsystem = nullptr;
+			cb_itf.cb_system_subsystem_get(&subsystem);
+			bool is_arcade = false;
+			if(subsystem) {
+				is_arcade = strcasecmp(subsystem, "arcade") == 0;
+                log_cb(RETRO_LOG_INFO, "[%s] File extension is: %s, subsystem = %s\n", __FUNCTION__, ext, subsystem);
+			}
+
+            if (is_arcade || !strcmp(".lst", ext)
+                || !strcmp(".bin", ext) || !strcmp(".BIN", ext)
+                || !strcmp(".dat", ext) || !strcmp(".DAT", ext)
+                || !strcmp(".zip", ext) || !strcmp(".ZIP", ext)
+                || !strcmp(".7z", ext) || !strcmp(".7Z", ext))
+            {
+                settings.platform.system = naomi_cart_GetPlatform(game->path);
+                // Users should use the superior format instead, let's warn them
+                if (!strcmp(".lst", ext)
+                    || !strcmp(".bin", ext) || !strcmp(".BIN", ext)
+                    || !strcmp(".dat", ext) || !strcmp(".DAT", ext))
+                {
+                    struct retro_message msg;
+                    // Sadly, this callback is only able to display short messages, so we can't give proper explanations...
+                    msg.msg = "Please upgrade to MAME romsets or expect issues";
+                    msg.frames = 1200;
+                    environ_cb(RETRO_ENVIRONMENT_SET_MESSAGE, &msg);
+                }
+            }
+
+#else
 			log_cb(RETRO_LOG_INFO, "File extension is: %s\n", ext);
 			if (!strcmp(".lst", ext)
 					|| !strcmp(".bin", ext) || !strcmp(".BIN", ext)
@@ -1989,6 +2026,7 @@ bool retro_load_game(const struct retro_game_info *game)
 					environ_cb(RETRO_ENVIRONMENT_SET_MESSAGE, &msg);
 				}
 			}
+#endif
 			// If m3u playlist found load the paths into array
 			else if (!strcmp(".m3u", ext) || !strcmp(".M3U", ext))
 			{
