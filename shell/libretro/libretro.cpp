@@ -2353,6 +2353,10 @@ void retro_set_controller_port_device(unsigned in_port, unsigned device)
 		MapleDeviceType puru_or_vmu = enable_purupuru ? MDT_PurupuruPack : MDT_SegaVMU;
 		switch (device)
 		{
+#ifdef PORTANDROID
+            case RETRO_DEVICE_PSE_ANALOG:
+            case RETRO_DEVICE_PSE_DUALSHOCK:
+#endif
 			case RETRO_DEVICE_JOYPAD           : cfg = { MDT_SegaController,       MDT_SegaVMU, puru_or_vmu }; break;
 			case RETRO_DEVICE_TWINSTICK        : 
 			case RETRO_DEVICE_TWINSTICK_SATURN : cfg = { MDT_TwinStick,            puru_or_vmu, MDT_None };    break;
