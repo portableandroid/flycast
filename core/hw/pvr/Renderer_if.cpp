@@ -16,6 +16,10 @@
 #ifdef LIBRETRO
 void retro_rend_present();
 void retro_resize_renderer(int w, int h, float aspectRatio);
+#ifdef PORTANDROID
+#define _cb_type_lock_
+#include "emu_init.h"
+#endif
 #endif
 
 u32 FrameCount=1;
@@ -523,7 +527,16 @@ void rend_enable_renderer(bool enabled) {
 }
 
 bool rend_is_enabled() {
+#ifdef PORTANDROID
+    if(config::ThreadedRendering) {
+        // Engine skipping frame is not supported in threaded rendering
+        return true;
+    }else {
+        return !cb_context.video_skip;
+    }
+#else
 	return rendererEnabled;
+#endif
 }
 
 void rend_serialize(Serializer& ser)
