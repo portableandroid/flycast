@@ -35,14 +35,15 @@ using namespace vixl::aarch64;
 
 #include "hw/sh4/sh4_mmr.h"
 #include "hw/sh4/sh4_interrupts.h"
+#include "arm64_unwind.h"
 #include "hw/sh4/sh4_core.h"
 #include "hw/sh4/dyna/ngen.h"
 #include "hw/sh4/sh4_mem.h"
 #include "hw/sh4/sh4_rom.h"
 #include "arm64_regalloc.h"
 #include "hw/mem/addrspace.h"
-#include "arm64_unwind.h"
 #include "oslib/virtmem.h"
+#include "emulator.h"
 
 #undef do_sqw_nommu
 
@@ -907,6 +908,7 @@ public:
 				}
 				break;
 
+			/* fall back to the canonical implementations for better precision
 			case shop_fipr:
 				Add(x9, x28, sh4_context_mem_operand(op.rs1.reg_ptr()).GetOffset());
 				Ld1(v0.V4S(), MemOperand(x9));
@@ -937,6 +939,7 @@ public:
 				Add(x9, x28, sh4_context_mem_operand(op.rd.reg_ptr()).GetOffset());
 				St1(v5.V4S(), MemOperand(x9));
 				break;
+			*/
 
 			case shop_frswap:
 				Add(x9, x28, sh4_context_mem_operand(op.rs1.reg_ptr()).GetOffset());
@@ -1077,13 +1080,11 @@ public:
 		switch (size)
 		{
 		case 1:
-			GenCallRuntime(addrspace::read8);
-			Sxtb(w0, w0);
+			GenCallRuntime(addrspace::read8SX32);
 			break;
 
 		case 2:
-			GenCallRuntime(addrspace::read16);
-			Sxth(w0, w0);
+			GenCallRuntime(addrspace::read16SX32);
 			break;
 
 		case 4:
@@ -1108,10 +1109,12 @@ public:
 		switch (size)
 		{
 		case 1:
+			Uxtb(w1, w1);
 			GenCallRuntime(addrspace::write8);
 			break;
 
 		case 2:
+			Uxth(w1, w1);
 			GenCallRuntime(addrspace::write16);
 			break;
 
@@ -1497,7 +1500,7 @@ public:
 		// w0: vaddr, w1: addr
 		checkBlockFpu = GetCursorAddress<DynaCode *>();
 		Label fpu_enabled;
-		Ldr(w10, sh4_context_mem_operand(&sr));
+		Ldr(w10, sh4_context_mem_operand(&sr.status));
 		Tbz(w10, 15, &fpu_enabled);			// test SR.FD bit
 
 		Mov(w1, Sh4Ex_FpuDisabled);	// exception code
@@ -1976,6 +1979,10 @@ private:
 			}
 			else
 			{
+				if (op.size == 1)
+					Uxtb(w1, w1);
+				else if (op.size == 2)
+					Uxth(w1, w1);
 				GenCallRuntime((void (*)())ptr);
 			}
 		}
@@ -2213,8 +2220,8 @@ public:
 				generate_mainloop();
 
 				::mainloop(v_cntx);
-				if (restarting)
-					p_sh4rcb->cntx.CpuRunning = 1;
+				if (restarting && !emu.restartCpu())
+					restarting = false;
 			} while (restarting);
 		} catch (const SH4ThrownException&) {
 			ERROR_LOG(DYNAREC, "SH4ThrownException in mainloop");

@@ -474,6 +474,7 @@ extern Option<bool> DupeFrames;
 extern Option<bool> NativeDepthInterpolation;
 extern Option<bool> EmulateFramebuffer;
 extern Option<bool> FixUpscaleBleedingEdge;
+extern Option<bool> CustomGpuDriver;
 #ifdef VIDEO_ROUTING
 extern Option<bool, false> VideoRouting;
 extern Option<bool, false> VideoRoutingScale;
@@ -496,6 +497,10 @@ extern Option<bool> OpenGlChecks;
 extern Option<std::vector<std::string>, false> ContentPath;
 extern Option<bool, false> HideLegacyNaomiRoms;
 extern Option<bool, false> UploadCrashLogs;
+extern Option<bool, false> DiscordPresence;
+#if defined(__ANDROID__) && !defined(LIBRETRO)
+extern Option<bool, false> UseSafFilePicker;
+#endif
 
 // Profiling
 extern Option<bool> ProfilerEnabled;
@@ -523,10 +528,6 @@ extern Option<bool> NetworkOutput;
 extern Option<int> MultiboardSlaves;
 extern Option<bool> BattleCableEnable;
 
-#ifdef SUPPORT_DISPMANX
-extern Option<bool> DispmanxMaintainAspect;
-#endif
-
 #ifdef USE_OMX
 extern Option<int> OmxAudioLatency;
 extern Option<bool> OmxAudioHdmi;
@@ -536,6 +537,7 @@ extern Option<bool> OmxAudioHdmi;
 
 extern Option<int> MouseSensitivity;
 extern Option<int> VirtualGamepadVibration;
+extern Option<int> VirtualGamepadTransparency;
 extern std::array<Option<MapleDeviceType>, 4> MapleMainDevices;
 extern std::array<std::array<Option<MapleDeviceType>, 2>, 4> MapleExpansionDevices;
 extern Option<bool> PerGameVmu;
@@ -548,5 +550,12 @@ constexpr bool UseRawInput = false;
 #ifdef USE_LUA
 extern Option<std::string, false> LuaFileName;
 #endif
+
+// RetroAchievements
+
+extern Option<bool> EnableAchievements;
+extern Option<bool> AchievementsHardcoreMode;
+extern OptionString AchievementsUserName;
+extern OptionString AchievementsToken;
 
 } // namespace config

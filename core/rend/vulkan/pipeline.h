@@ -41,8 +41,8 @@ public:
 	}
 	void updateUniforms(vk::Buffer buffer, u32 vertexUniformOffset, u32 fragmentUniformOffset, vk::ImageView fogImageView, vk::ImageView paletteImageView)
 	{
-		if (!perFrameDescSet)
-			perFrameDescSet = perFrameAlloc.alloc();
+		perFrameDescSet = perFrameAlloc.alloc();
+		perPolyDescSets.clear();
 
 		std::vector<vk::DescriptorBufferInfo> bufferInfos;
 		bufferInfos.emplace_back(buffer, vertexUniformOffset, sizeof(VertexShaderUniforms));
@@ -286,7 +286,7 @@ private:
 		return cullMode | ((int)naomi2 << 2) | ((int)(!settings.platform.isNaomi2() && config::NativeDepthInterpolation) << 3);
 	}
 
-	vk::PipelineVertexInputStateCreateInfo GetMainVertexInputStateCreateInfo(bool full = true) const
+	vk::PipelineVertexInputStateCreateInfo GetMainVertexInputStateCreateInfo(bool full = true, bool naomi2 = false) const
 	{
 		// Vertex input state
 		static const vk::VertexInputBindingDescription vertexBindingDescriptions[] =
@@ -296,8 +296,8 @@ private:
 		static const vk::VertexInputAttributeDescription vertexInputAttributeDescriptions[] =
 		{
 				vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, x)),	// pos
-				vk::VertexInputAttributeDescription(1, 0, vk::Format::eR8G8B8A8Uint, offsetof(Vertex, col)),	// base color
-				vk::VertexInputAttributeDescription(2, 0, vk::Format::eR8G8B8A8Uint, offsetof(Vertex, spc)),	// offset color
+				vk::VertexInputAttributeDescription(1, 0, vk::Format::eR8G8B8A8Unorm, offsetof(Vertex, col)),	// base color
+				vk::VertexInputAttributeDescription(2, 0, vk::Format::eR8G8B8A8Unorm, offsetof(Vertex, spc)),	// offset color
 				vk::VertexInputAttributeDescription(3, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, u)),		// tex coord
 				vk::VertexInputAttributeDescription(4, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, nx)),	// naomi2 normal
 		};
@@ -305,12 +305,33 @@ private:
 		{
 				vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, x)),	// pos
 		};
+
+
+		const vk::VertexInputAttributeDescription* attributeDescription = vertexInputLightAttributeDescriptions;
+		u32 attributeDescriptionSize = std::size(vertexInputLightAttributeDescriptions);
+
+		if (full)
+		{
+			attributeDescription = vertexInputAttributeDescriptions;
+
+			if (naomi2)
+			{
+				attributeDescriptionSize = std::size(vertexInputAttributeDescriptions);
+			}
+			else
+			{
+				// naomi2 normal not needed
+				attributeDescriptionSize = std::size(vertexInputAttributeDescriptions) - 1;
+			}
+		}
+		
+
+
 		return vk::PipelineVertexInputStateCreateInfo(
 				vk::PipelineVertexInputStateCreateFlags(),
-				std::size(vertexBindingDescriptions),
-				vertexBindingDescriptions,
-				full ? std::size(vertexInputAttributeDescriptions) : std::size(vertexInputLightAttributeDescriptions),
-				full ? vertexInputAttributeDescriptions : vertexInputLightAttributeDescriptions);
+				std::size(vertexBindingDescriptions), vertexBindingDescriptions,
+				attributeDescriptionSize, attributeDescription
+		);
 	}
 
 	void CreatePipeline(u32 listType, bool sortTriangles, const PolyParam& pp, int gpuPalette, bool dithering);
@@ -398,7 +419,7 @@ public:
 					vk::SamplerCreateInfo(vk::SamplerCreateFlags(), vk::Filter::eLinear, vk::Filter::eLinear,
 										vk::SamplerMipmapMode::eLinear, vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge,
 										vk::SamplerAddressMode::eClampToEdge, 0.0f, false, 16.0f, false,
-										vk::CompareOp::eNever, 0.0f, 0.0f, vk::BorderColor::eFloatOpaqueBlack));
+										vk::CompareOp::eNever, 0.0f, vk::LodClampNone, vk::BorderColor::eFloatOpaqueBlack));
 		}
 		if (this->renderPass != renderPass)
 		{

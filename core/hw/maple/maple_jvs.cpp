@@ -24,6 +24,7 @@
 #include "cfg/option.h"
 #include "network/output.h"
 #include "hw/naomi/printer.h"
+#include "input/haptic.h"
 
 #include <algorithm>
 #include <array>
@@ -662,8 +663,10 @@ protected:
 };
 
 // 837-13844 jvs board wired to force-feedback drive board
-// 838-13843: f355
-// 838-13992: 18 wheeler
+// 838-13843: f355 (ROM EPR-21867)
+// 838-13992: 18 wheeler (ROM EPR-23000)
+// with 838-12912-01 servo board (same as model3)
+// https://github.com/njz3/vJoyIOFeederWithFFB/blob/master/DRIVEBOARD.md
 class jvs_837_13844_racing : public jvs_837_13844_motor_board
 {
 public:
@@ -675,13 +678,55 @@ public:
 	void serialize(Serializer& ser) const override
 	{
 		ser << testMode;
+		ser << damper_high;
+		ser << active;
+		ser << motorPower;
+		ser << springSat;
+		ser << springSpeed;
+		ser << torque;
+		ser << damper;
 		jvs_837_13844_motor_board::serialize(ser);
 	}
 	void deserialize(Deserializer& deser) override
 	{
 		if (deser.version() >= Deserializer::V31)
 			deser >> testMode;
+		else
+			testMode = false;
+		if (deser.version() >= Deserializer::V51)
+		{
+			deser >> damper_high;
+			deser >> active;
+			deser >> motorPower;
+			deser >> springSat;
+			deser >> springSpeed;
+			deser >> torque;
+			deser >> damper;
+		}
+		else
+		{
+			damper_high = 8;
+			active = false;
+			motorPower = 1.f;
+			springSat = 0.f;
+			springSpeed = 0.f;
+			torque = 0.f;
+			damper = 0.f;
+		}
 		jvs_837_13844_motor_board::deserialize(deser);
+		if (active)
+		{
+			haptic::setSpring(0, springSat, springSpeed);
+			haptic::setTorque(0, torque);
+			haptic::setDamper(0, damper, damper / 2.f);
+		}
+		else {
+			haptic::stopAll(0);
+		}
+	}
+
+	void setTokyoBusMode(bool enable) {
+		tokyoBus = enable;
 	}
 
 protected:
@@ -689,31 +734,106 @@ protected:
 	{
 		in = ~in;
 		networkOutput.output("m3ffb", in);
-		// E0: stop motor
-		// E3: roll right
-		// EB: roll left
 
-		// Dn: set wheel high-order?
-		// Cn: set wheel low-order?
-		// 18 wheeler: ff, fe, 3f, 49, 67
-		//    d8, c0, e0, d0
-		//    4b, 4a, 9f, 4b, 4d, 4e, 4f, 45, 45, 4f, a3, 4d, ..., 9f, 4c,
 		u8 out = 0;
 		switch (in)
 		{
+		case 0:
+		case 1:
+		case 2:
+			// 18wheeler: 0 light (60%), 1 normal (80%), 2 heavy (100%)
+			if (!active)
+				motorPower = 0.6f + in * 0.2f;
+			break;
+
 		case 0xf0:
+			active = false;
 			testMode = true;
+			break;
+
+		case 0xfe:
+			active = true;
 			break;
 
 		case 0xff:
 			testMode = false;
+			active = false;
+			haptic::stopAll(0);
 			break;
 
 		case 0xf1:
-			out = 0x10;
+			out = 0x10; // needed by f355 and tokyobus
+			break;
+
+		case 0xfa:
+			motorPower = 1.f;	// f355: 100%
+			break;
+		case 0xfb:
+			motorPower = 0.9f;	// f355: 90%
+			break;
+		case 0xfc:
+			motorPower = 0.8f;	// f355: 80%
+			break;
+		case 0xfd:
+			motorPower = 0.6f;	// f355: 60%
 			break;
 
 		default:
+			if (active)
+			{
+				if (in >= 0x40 && in <= 0x7f)
+				{
+					if (tokyoBus)
+					{
+						if (in <= 0x4a)
+							// heavy: 4a
+							// normal: 47
+							// light: 44
+							motorPower = (in & 0xf) / 10.f;
+					}
+					else
+					{
+						// Spring
+						// bits 0-3 sets the strength of the spring effect
+						// bits 4-5 selects a table scaling the effect given the deflection:
+						//     (from the f355 rom EPR-21867)
+						//     0: large deadzone then abrupt scaling (0 (* 129), 10, 20, 30, 40, 50, 60, 70, 7F)
+						//     used by 18wheeler in game but with a different rom (TODO reveng)
+						//     other tables scale linearly:
+						//     1: light speed (96 steps from 0 to 7f)
+						//     2: medium speed (48 steps, default)
+						//     3: high speed (32 steps)
+						springSat = (in & 0xf) / 15.f * motorPower;
+						const int speedSel = (in >> 4) & 3;
+						springSpeed = speedSel == 3 ? 1.f : speedSel == 2 ? 0.67f : speedSel == 1 ? 0.33f : 0.67f;
+						haptic::setSpring(0, springSat, springSpeed);
+					}
+				}
+				else if (in >= 0x80 && in <= 0xbf)
+				{
+					// Rumble
+					const float v = (in & 0x3f) / 63.f * motorPower / 2.f;	// additional 0.5 factor to soften it
+					MapleConfigMap::UpdateVibration(0, v, 0.f, 50);			// duration?
+				}
+				else if (in >= 0xe0 && in <= 0xef)
+				{
+					// Test menu roll left/right (not used in game)
+					torque = (in < 0xe8 ? (0xe0 - in) : (in - 0xe8)) / 7.f;
+					haptic::setTorque(0, torque);
+				}
+				else if ((in & 0xf0) == 0xc0)
+				{
+					// Damper? more likely Friction
+					// activated in f355 when turning the wheel while stopped
+					// high-order bits are set with Dn, low-order bits with Cn. Only the later commits the change.
+					const u8 v = (damper_high << 4) | (in & 0xf);
+					damper = std::abs(v - 0x80) / 128.f * motorPower;
+					haptic::setDamper(0, damper, damper / 2.f);
+				}
+				else if ((in & 0xf0) == 0xd0) {
+					damper_high = in & 0xf;
+				}
+			}
 			break;
 		}
 		if (testMode)
@@ -729,6 +849,14 @@ protected:
 
 private:
 	bool testMode = false;
+	u8 damper_high = 8;
+	bool active = false;
+	float motorPower = 1.f;
+	float springSat = 0.f;
+	float springSpeed = 0.f;
+	float torque = 0.f;
+	float damper = 0.f;
+	bool tokyoBus = false;
 };
 
 // 18 Wheeler: fake the drive board and limit the wheel analog value
@@ -1171,10 +1299,12 @@ maple_naomi_jamma::maple_naomi_jamma()
 			INFO_LOG(MAPLE, "Enabling specific JVS setup for game %s", gameId.c_str());
 			io_boards.push_back(std::make_unique<jvs_837_13844_18wheeler>(1, this));
 		}
-		else if (gameId == "F355 CHALLENGE JAPAN")
+		else if (gameId == "F355 CHALLENGE JAPAN" || gameId == "TOKYO BUS GUIDE")
 		{
 			INFO_LOG(MAPLE, "Enabling specific JVS setup for game %s", gameId.c_str());
 			io_boards.push_back(std::make_unique<jvs_837_13844_racing>(1, this));
+			if (gameId == "TOKYO BUS GUIDE")
+				static_cast<jvs_837_13844_racing *>(io_boards.back().get())->setTokyoBusMode(true);
 		}
 		else if (gameId.substr(0, 8) == "MKG TKOB"
 				|| gameId.substr(0, 9) == "MUSHIKING"
@@ -2137,7 +2267,7 @@ u32 jvs_io_board::handle_jvs_message(u8 *buffer_in, u32 length_in, u8 *buffer_ou
 									}
 									else
 									{
-										axis_value =  read_analog_axis(player_num, axisDesc.axis, axisDesc.inverted);
+										axis_value = read_analog_axis(player_num, axisDesc.axis, axisDesc.inverted);
 									}
 								}
 								else
@@ -2150,6 +2280,12 @@ u32 jvs_io_board::handle_jvs_message(u8 *buffer_in, u32 length_in, u8 *buffer_ou
 								axis_value = read_analog_axis(player_num, player_axis, false);
 							}
 							LOGJVS("%d:%4x ", axis, axis_value);
+							// Strangely, the least significant byte appears to be handled as signed,
+							// so we compensate when it's negative.
+							// Avoid overflow (wild riders)
+							axis_value = std::min<u16>(0xff7f, axis_value);
+							if (axis_value & 0x80)
+								axis_value += 0x100;
 							JVS_OUT(axis_value >> 8);
 							JVS_OUT(axis_value);
 						}

@@ -111,7 +111,7 @@ const WidescreenCheat CheatManager::widescreen_cheats[] =
 		{ "MK-5115450", nullptr,    { 0x3D3B10 }, { 0x43700000 } },		// Fighting Vipers 2 (PAL)
 		{ "HDR-0133",   nullptr,    { 0x3D3AF0 }, { 0x43700000 } },		// Fighting Vipers 2 (JP)
 		{ "T18805M",	nullptr,	{ 0x1A39C0 }, { 0x3F400000 } },		// Fire Pro Wrestling D (JP)
-		{ "MK-51114",   nullptr,    { 0x132DD8, 0xA26CA8, 0xA26738, 0xA275B8, 0xA26AD8, 0xA26908 },
+		{ "MK-51114",   "  E     ", { 0x132DD8, 0xA26CA8, 0xA26738, 0xA275B8, 0xA26AD8, 0xA26908 },
 				{ 0x3F400000, 0x3F400000, 0x3F400000, 0x3F400000, 0x3F400000, 0x3F400000 } },	// Floigan Bros. Ep. 1 (PAL)
 		{ "T34201M",    nullptr,    { 0x586290, 0x586260 }, { 0x3F400000, 0x43F00000 } },	// Frame Gride (JP)
 		{ "T-8113D-50", nullptr,    { 0x55A354 }, { 0x3FAAAAAB } },		// Fur Fighters (PAL)
@@ -225,6 +225,7 @@ const WidescreenCheat CheatManager::widescreen_cheats[] =
 		{ "T8104D  58", nullptr,    { 0x2C03F8 }, { 0x44558000 } },		// Shadow Man (PAL)
 		{ "T-8106N",    nullptr,    { 0x2C03F4 }, { 0x3F400000 } },		// Shadow Man (USA)
 		{ "MK-51048",   nullptr,    { 0x4AA4DC, 0x2B4E30 }, { 0x3F400000, 0x3F400000 } },	// Seaman (USA)
+		{ "MK-51053",   nullptr,    { 0x5630CC }, { 0x3F400000 } },		// Sega GT (USA)	
 		{ "MK-5105350", nullptr,    { 0x5D613C }, { 0x3F400000 } },		// Sega GT (PAL)
 		{ "MK-51096",   nullptr,    { 0x495050 }, { 0x43700000 } },		// Sega Marine Fishing (USA)
 //		{ "MK-51019",   nullptr,    { 0xB83A48 }, { 0x3F400000 } },		// Sega Rally 2 (USA) not working?
@@ -271,14 +272,15 @@ const WidescreenCheat CheatManager::widescreen_cheats[] =
 		{ "T36807D 05", nullptr,    { 0x140F74, 0x140FA4 }, { 0x43FA0000, 0x3F400000 } },	// Sword of Bersek (PAL)
 		{ "T-36805N",   nullptr,    { 0x13F1C4, 0x13F194 }, { 0x3F400000, 0x43F00000 } },	// Sword of Bersek (USA)
 		{ "MK-51186",   nullptr,    { 0x4A19B0 }, { 0x43700000 } },		// Tennis 2K2 (USA)
-		{ "T15123N",    nullptr,    { 0x29B7BC }, { 0x3F400000 } },		// Test Drive Le Mans (USA) doesn't work?
+		{ "T15123N",    nullptr,    { 0x29B7BC }, { 0x3F400000 } },		// Test Drive Le Mans (USA)
 		{ "T20801M",    nullptr,    { 0x1AAC80, 0x1AACB0 }, { 0x43F00000, 0x3F400000 } },	// Tetris 4D (JP)
 		{ "MK-5101153", nullptr,    { 0x14EFA8, 0x14EFD8 }, { 0x43F00000, 0x3F400000 } },	// Timestalkers (PAL)
 		{ "T7009D50",   nullptr,    { 0x39173C }, { 0x3F400000 } },		// Tech Romancer (PAL)
 		{ "T35402M",    nullptr,    { 0x315370, 0x3153A0 }, { 0x43F00000, 0x3F400000 } },	// Tokyo Bus Guide (JP) doesn't work?
 		{ "T40201D 50", nullptr,    { 0x1D9F10 }, { 0x3F400000 } },		// Tokyo Highway Challenge (PAL)
 		{ "T40210D 50", nullptr,    { 0x21E4F8 }, { 0x43700000 } },		// Tokyo Highway Challenge 2 (PAL)
-		{ "xxxxxxxxxx", nullptr,    { 0x21DEF8 }, { 0x3F400000 } },		// Tokyo Street Racer 2 (USA)
+		{ "T40202N", nullptr,    { 0x1D9EB0 }, { 0x3F400000 } },		// Tokyo Xtreme Racer (USA)		
+		{ "T40211N", nullptr,    { 0x21DEF8 }, { 0x43700000 } },		// Tokyo Xtreme Racer 2 (USA)
 //		{ "T36804D05",  nullptr,    { 0xB75E28 }, { 0x3EC00000 } },		// Tomb Raider: The Last Revelation (UK) (PAL) clipping, use hex patch instead
 //		{ "T40205N",    nullptr,    { 0x160D80, 0x160D7C }, { 0xA, 0xA } },	// Tony Hawk's Pro Skater (USA) -> missing character on selection screen
 		{ "T13008D 05", nullptr,    { 0x1D7C20 }, { 0x3FA66666 } },		// Tony Hawk's Pro Skater 2 (PAL)
@@ -300,7 +302,7 @@ const WidescreenCheat CheatManager::widescreen_cheats[] =
 //		{ "T0000",      nullptr,    { 0x3A514C, 0x3A6170 }, { 0x3F400000, 0x00000356 } },	// Volgarr the Viking. Not working
 		{ "xxxxxxxxxx", nullptr,    { 0x20BB68, 0x1ACBD0, 0x1B9ADC },	// Code 1 reduces clipping.	Code 2 fixes the clock.
 				{ 0x43700000, 0x7C1ACC60, 0x3F400000 } },					// What's Shenmue (JP)
-		{ "T40504D 50", nullptr,    { 0x75281C }, { 0x3F400000 } },		// Wetrix+ (PAL) not working?
+		{ "T40504D 50", nullptr,    { 0x75281C }, { 0x3F400000 } },		// Wetrix+ (PAL)
 		{ "MK-51152",   nullptr,    { 0x014E90 }, { 0x43700000 } },		// World Series Baseball 2K2 (USA)
 		{ "T20401M",    nullptr,    { 0x323CB0, 0x1ACBD0, 0x1B9ADC },	// Code 1 reduces clipping. Code 2 fixes the HUD.
 				{ 0x43700000, 0x1ACC60, 0x3F400000 } },						// Zero Gunner 2 (JP)
@@ -316,6 +318,7 @@ const WidescreenCheat CheatManager::naomi_widescreen_cheats[] =
 		{ "KNIGHTS OF VALOUR  THE 7 SPIRITS", nullptr, { 0x475B70, 0x475B40 }, { 0x3F400000, 0x43F00000 } },
 		{ "Dolphin Blue", nullptr, { 0x3F2E2C, 0x3F2190, 0x3F2E6C, 0x3F215C },
 				{ 0x43B90000, 0x3FAA9FBE, 0x43B90000, 0x43F00000 } },
+		{ "FASTER THAN SPEED", nullptr, { 0x3488E0 }, { 0x3F400000 } }, // ftspeed
 		{ "METAL SLUG 6", nullptr, { 0xE93478, 0xE9347C }, { 0x3F400000, 0x3F8872B0 } },
 		{ "TOY FIGHTER", nullptr, { 0x133E58 }, { 0x43700000 } },
 		{ "LUPIN THE THIRD  -THE SHOOTING-", nullptr, { 0x045490 }, { 0x3F400000 } },
@@ -374,6 +377,17 @@ void CheatManager::setActive(bool active)
 void CheatManager::loadCheatFile(const std::string& filename)
 {
 #ifndef LIBRETRO
+	try {
+		hostfs::FileInfo fileInfo = hostfs::storage().getFileInfo(filename);
+		if (fileInfo.size >= 1_MB) {
+			WARN_LOG(COMMON, "Cheat file '%s' is too big", filename.c_str());
+			return;
+		}
+	} catch (const hostfs::StorageException& e) {
+		WARN_LOG(COMMON, "Cannot find cheat file '%s': %s", filename.c_str(), e.what());
+		return;
+	}
+
 	FILE* cheatfile = hostfs::storage().openFile(filename, "r");
 	if (cheatfile == nullptr)
 	{
@@ -418,7 +432,8 @@ void CheatManager::loadCheatFile(const std::string& filename)
 	}
 	setActive(!cheats.empty());
 	INFO_LOG(COMMON, "%d cheats loaded", (int)cheats.size());
-	cfgSaveStr("cheats", gameId, filename);
+	if (!cheats.empty())
+		cfgSaveStr("cheats", gameId, filename);
 #endif
 }
 
@@ -431,9 +446,12 @@ void CheatManager::reset(const std::string& gameId)
 		setActive(false);
 		this->gameId = gameId;
 #ifndef LIBRETRO
-		std::string cheatFile = cfgLoadStr("cheats", gameId, "");
-		if (!cheatFile.empty())
-			loadCheatFile(cheatFile);
+		if (!settings.raHardcoreMode)
+		{
+			std::string cheatFile = cfgLoadStr("cheats", gameId, "");
+			if (!cheatFile.empty())
+				loadCheatFile(cheatFile);
+		}
 #endif
 		size_t cheatCount = cheats.size();
 		if (gameId == "Fixed BOOT strapper")	// Extreme Hunting 2
@@ -447,31 +465,6 @@ void CheatManager::reset(const std::string& gameId)
 		}
 		else if (gameId == "THE KING OF ROUTE66") {
 			cheats.emplace_back(Cheat::Type::setValue, "ignore drive error", true, 32, 0x00023ee0, 0x0009000B, true); // rts, nop
-		}
-		else if (gameId.substr(0, 8) == "MKG TKOB")
-		{
-			const auto& setMushikingCheats = [this](u32 addr) {
-				cheats.emplace_back(Cheat::Type::setValue, "ignore rfid1 error", true, 32, addr, 0, true); // rfid[0].error = 0
-				cheats.emplace_back(Cheat::Type::setValue, "ignore rfid2 error", true, 32, addr + 0x48, 0, true); // rfid[1].error = 0
-				cheats.emplace_back(Cheat::Type::setValue, "ignore rfid1 status", true, 32, addr + 8, 0, true); // rfid[0].data18 = 0
-				cheats.emplace_back(Cheat::Type::setValue, "ignore rfid2 status", true, 32, addr + 0x50, 0, true); // rfid[1].data18 = 0
-			};
-			if (gameId == "MKG TKOB 2 EXP VER1.001-")		// mushi2eo
-				setMushikingCheats(0x6fe1bc);
-			else if (gameId == "MKG TKOB 2 JPN VER2.001-")	// mushik2e
-				setMushikingCheats(0x6ffe54);
-			else if (gameId == "MKG TKOB 2K3 2ND VER1.003-")// mushike
-				setMushikingCheats(0x4ad7ec);
-			else if (gameId == "MKG TKOB 4 JPN VER2.000-")	// mushik4e
-				setMushikingCheats(0xb0e538);
-			else if (gameId == "MKG TKOB 2K3 2ND VER1.002-")// mushikeo
-				setMushikingCheats(0x4ad56c);
-			else if (gameId == "MKG TKOB 2K3 2ND KOR VER1.000-") // mushikk
-				setMushikingCheats(0x4ac9b8);
-			else if (gameId == "MKG TKOB 2K3 2ND CHN VER1.000-") // mushikc
-				setMushikingCheats(0x4aa9b8);
-			else if (gameId == "MKG TKOB 2 KOR VER1.000-")	// mushik2k
-				setMushikingCheats(0x706084);
 		}
 		else if (gameId == "T-8120N") {		// Dave Mirra BMX (US)
 			cheats.emplace_back(Cheat::Type::setValue, "fix main loop time", true, 32, 0x0030b8cc, 0x42040000, true); // 33.0 ms
@@ -491,7 +484,7 @@ void CheatManager::reset(const std::string& gameId)
 		if (cheats.size() > cheatCount)
 			setActive(true);
 	}
-	if (config::WidescreenGameHacks)
+	if (config::WidescreenGameHacks && !settings.raHardcoreMode)
 	{
 		if (settings.platform.isConsole())
 		{

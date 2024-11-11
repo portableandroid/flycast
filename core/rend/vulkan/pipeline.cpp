@@ -31,7 +31,7 @@ void PipelineManager::CreateModVolPipeline(ModVolMode mode, int cullMode, bool n
 
 	if (mode == ModVolMode::Final)
 	{
-		pipelineVertexInputStateCreateInfo = GetMainVertexInputStateCreateInfo(false);
+		pipelineVertexInputStateCreateInfo = GetMainVertexInputStateCreateInfo(false, naomi2);
 		pipelineInputAssemblyStateCreateInfo = vk::PipelineInputAssemblyStateCreateInfo(vk::PipelineInputAssemblyStateCreateFlags(),
 				vk::PrimitiveTopology::eTriangleStrip);
 	}
@@ -161,7 +161,7 @@ void PipelineManager::CreateModVolPipeline(ModVolMode mode, int cullMode, bool n
 void PipelineManager::CreateDepthPassPipeline(int cullMode, bool naomi2)
 {
 	// Vertex input state
-	vk::PipelineVertexInputStateCreateInfo pipelineVertexInputStateCreateInfo = GetMainVertexInputStateCreateInfo(false);
+	vk::PipelineVertexInputStateCreateInfo pipelineVertexInputStateCreateInfo = GetMainVertexInputStateCreateInfo(false, false);
 	// Input assembly state
 	vk::PipelineInputAssemblyStateCreateInfo pipelineInputAssemblyStateCreateInfo
 	(
@@ -189,6 +189,17 @@ void PipelineManager::CreateDepthPassPipeline(int cullMode, bool naomi2)
 	  0.0f,                                         // depthBiasSlopeFactor
 	  1.0f                                          // lineWidth
 	);
+
+	// Dreamcast uses the last vertex as the provoking vertex, but Vulkan uses the first.
+	// Utilize VK_EXT_provoking_vertex when available to set the provoking vertex to be the
+	// last vertex
+	vk::PipelineRasterizationProvokingVertexStateCreateInfoEXT provokingVertexInfo{};
+	if (GetContext()->hasProvokingVertex())
+	{
+		provokingVertexInfo.provokingVertexMode = vk::ProvokingVertexModeEXT::eLastVertex;
+		pipelineRasterizationStateCreateInfo.pNext = &provokingVertexInfo;
+	}
+
 	vk::PipelineMultisampleStateCreateInfo pipelineMultisampleStateCreateInfo;
 
 	// Depth and stencil
@@ -262,7 +273,7 @@ void PipelineManager::CreateDepthPassPipeline(int cullMode, bool naomi2)
 
 void PipelineManager::CreatePipeline(u32 listType, bool sortTriangles, const PolyParam& pp, int gpuPalette, bool dithering)
 {
-	vk::PipelineVertexInputStateCreateInfo pipelineVertexInputStateCreateInfo = GetMainVertexInputStateCreateInfo();
+	vk::PipelineVertexInputStateCreateInfo pipelineVertexInputStateCreateInfo = GetMainVertexInputStateCreateInfo(true, pp.isNaomi2());
 
 	// Input assembly state
 	vk::PipelineInputAssemblyStateCreateInfo pipelineInputAssemblyStateCreateInfo;
@@ -295,6 +306,17 @@ void PipelineManager::CreatePipeline(u32 listType, bool sortTriangles, const Pol
 	  0.0f,                                         // depthBiasSlopeFactor
 	  1.0f                                          // lineWidth
 	);
+
+	// Dreamcast uses the last vertex as the provoking vertex, but Vulkan uses the first.
+	// Utilize VK_EXT_provoking_vertex when available to set the provoking vertex to be the
+	// last vertex
+	vk::PipelineRasterizationProvokingVertexStateCreateInfoEXT provokingVertexInfo{};
+	if (GetContext()->hasProvokingVertex())
+	{
+		provokingVertexInfo.provokingVertexMode = vk::ProvokingVertexModeEXT::eLastVertex;
+		pipelineRasterizationStateCreateInfo.pNext = &provokingVertexInfo;
+	}
+
 	vk::PipelineMultisampleStateCreateInfo pipelineMultisampleStateCreateInfo;
 
 	// Depth and stencil
@@ -375,7 +397,7 @@ void PipelineManager::CreatePipeline(u32 listType, bool sortTriangles, const Pol
 	FragmentShaderParams params = {};
 	params.alphaTest = listType == ListType_Punch_Through;
 	params.bumpmap = pp.tcw.PixelFmt == PixelBumpMap;
-	params.clamping = pp.tsp.ColorClamp && (pvrrc.fog_clamp_min.full != 0 || pvrrc.fog_clamp_max.full != 0xffffffff);
+	params.clamping = pp.tsp.ColorClamp;
 	params.insideClipTest = (pp.tileclip >> 28) == 3;
 	params.fog = config::Fog ? pp.tsp.FogCtrl : 2;
 	params.gouraud = pp.pcw.Gouraud;
@@ -421,7 +443,7 @@ void OSDPipeline::CreatePipeline()
 	static const vk::VertexInputBindingDescription vertexInputBindingDescription(0, sizeof(OSDVertex));
 	static const std::array<vk::VertexInputAttributeDescription, 3> vertexInputAttributeDescriptions = {
 			vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32Sfloat, offsetof(OSDVertex, x)),	// pos
-			vk::VertexInputAttributeDescription(1, 0, vk::Format::eR8G8B8A8Uint, offsetof(OSDVertex, r)),	// color
+			vk::VertexInputAttributeDescription(1, 0, vk::Format::eR8G8B8A8Unorm, offsetof(OSDVertex, r)),	// color
 			vk::VertexInputAttributeDescription(2, 0, vk::Format::eR32G32Sfloat, offsetof(OSDVertex, u)),	// tex coord
 	};
 	vk::PipelineVertexInputStateCreateInfo vertexInputStateCreateInfo(

@@ -642,6 +642,7 @@ static void create_modvol_shader()
 	gl4.modvol_shader.ndcMat = glGetUniformLocation(gl4.modvol_shader.program, "ndcMat");
 
 	N2Vertex4Source n2VertexShader;
+	n2VertexShader.setConstant("MODIFIER_VOLUME", true);
 	fragmentShader.setConstant("DIV_POS_Z", false);
 	gl4.n2ModVolShader.program = gl_CompileAndLink(n2VertexShader.generate().c_str(), fragmentShader.generate().c_str());
 	gl4.n2ModVolShader.ndcMat = glGetUniformLocation(gl4.n2ModVolShader.program, "ndcMat");
@@ -711,8 +712,8 @@ struct OpenGL4Renderer : OpenGLRenderer
 
 		if (!config::EmulateFramebuffer)
 		{
-			DrawOSD(false);
 			frameRendered = true;
+			DrawOSD(false);
 			renderVideoRouting();
 		}
 		restoreCurrentFramebuffer();
@@ -729,23 +730,13 @@ struct OpenGL4Renderer : OpenGLRenderer
 
 	bool renderFrame(int width, int height);
 
-#ifdef LIBRETRO
 	void DrawOSD(bool clearScreen) override
 	{
-		void DrawVmuTexture(u8 vmu_screen_number, int width, int height);
-		void DrawGunCrosshair(u8 port, int width, int height);
-
-		if (settings.platform.isConsole())
-		{
-			for (int vmu_screen_number = 0 ; vmu_screen_number < 4 ; vmu_screen_number++)
-				if (vmu_lcd_status[vmu_screen_number * 2])
-					DrawVmuTexture(vmu_screen_number, width, height);
-		}
-
-		for (int lightgun_port = 0 ; lightgun_port < 4 ; lightgun_port++)
-			DrawGunCrosshair(lightgun_port, width, height);
-	}
+		drawVmusAndCrosshairs(width, height);
+#ifndef LIBRETRO
+		gui_display_osd();
 #endif
+	}
 };
 
 //setup
@@ -781,7 +772,6 @@ bool OpenGL4Renderer::Init()
 		UpscalexBRZ(2, src, dst, 2, 2, false);
 	}
 	fog_needs_update = true;
-	forcePaletteUpdate();
 	TextureCacheData::SetDirectXColorOrder(false);
 	TextureCacheData::setUploadToGPUFlavor();
 

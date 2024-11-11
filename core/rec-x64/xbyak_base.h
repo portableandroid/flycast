@@ -537,7 +537,6 @@ protected:
 			break;
 
 		case shop_fsrra:
-			// RSQRTSS has an |error| <= 1.5*2^-12 where the SH4 FSRRA needs |error| <= 2^-21
 			sqrtss(xmm0, mapXRegister(op.rs1));
 			if (ArchX64)
 			{

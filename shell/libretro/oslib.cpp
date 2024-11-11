@@ -19,12 +19,16 @@
 #include "oslib/oslib.h"
 #include "stdclass.h"
 #include "file/file_path.h"
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 const char *retro_get_system_directory();
 
 extern char game_dir_no_slash[1024];
 extern char vmu_dir_no_slash[PATH_MAX];
 extern char content_name[PATH_MAX];
+extern char g_roms_dir[PATH_MAX];
 extern unsigned per_content_vmus;
 extern std::string arcadeFlashPath;
 
@@ -99,10 +103,14 @@ std::string findNaomiBios(const std::string& name)
 {
 	std::string basepath(game_dir_no_slash);
 	basepath += path_default_slash() + name;
-	if (file_exists(basepath))
-		return basepath;
-	else
-		return "";
+	if (!file_exists(basepath))
+	{
+		// File not found in system dir, try game dir instead
+		basepath = g_roms_dir + name;
+		if (!file_exists(basepath))
+			return "";
+	}
+	return basepath;
 }
 
 std::string getSavestatePath(int index, bool writable)
@@ -128,14 +136,30 @@ std::string getTextureDumpPath()
 			+ "texdump" + std::string(path_default_slash());
 }
 
+std::string getScreenshotsPath()
+{
+	// Unfortunately retroarch doesn't expose its "screenshots" path
+	return std::string(retro_get_system_directory()) + "/dc";
 }
 
-void dc_savestate(int index = 0)
+void saveScreenshot(const std::string& name, const std::vector<u8>& data)
 {
-	die("unsupported");
+	std::string path = getScreenshotsPath();
+	path += "/" + name;
+	FILE *f = nowide::fopen(path.c_str(), "wb");
+	if (f == nullptr)
+		throw FlycastException(path);
+	if (std::fwrite(&data[0], data.size(), 1, f) != 1) {
+		std::fclose(f);
+		unlink(path.c_str());
+		throw FlycastException(path);
+	}
+	std::fclose(f);
 }
 
-void dc_loadstate(int index = 0)
-{
-	die("unsupported");
 }
+
+#if defined(_WIN32) || defined(__APPLE__)
+void os_SetThreadName(const char *name) {
+}
+#endif

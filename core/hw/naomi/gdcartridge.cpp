@@ -494,34 +494,25 @@ void GDCartridge::device_start(LoadProgress *progress, std::vector<u8> *digest)
 		u8 buffer[2048];
 		std::string parent = hostfs::storage().getParentPath(settings.content.path);
 		std::string gdrom_path = get_file_basename(settings.content.fileName) + "/" + gdrom_name;
-		gdrom_path = hostfs::storage().getSubPath(parent, gdrom_path);
 		std::unique_ptr<Disc> gdrom;
 		try {
+			gdrom_path = hostfs::storage().getSubPath(parent, gdrom_path);
 			gdrom = std::unique_ptr<Disc>(OpenDisc(gdrom_path + ".chd", digest));
 		}
 		catch (const FlycastException& e)
 		{
 			WARN_LOG(NAOMI, "Opening chd failed: %s", e.what());
-			try {
-				gdrom = std::unique_ptr<Disc>(OpenDisc(gdrom_path + ".gdi", digest));
-			}
-			catch (const FlycastException& e)
+			if (gdrom_parent_name != nullptr)
 			{
-				if (gdrom_parent_name != nullptr)
-				{
+				try {
 					std::string gdrom_parent_path = hostfs::storage().getSubPath(parent, std::string(gdrom_parent_name) + "/" + gdrom_name);
-					try {
-						gdrom = std::unique_ptr<Disc>(OpenDisc(gdrom_parent_path + ".chd", digest));
-					} catch (const FlycastException& e) {
-						WARN_LOG(NAOMI, "Opening parent chd failed: %s", e.what());
-						try {
-							gdrom = std::unique_ptr<Disc>(OpenDisc(gdrom_parent_path + ".gdi", digest));
-						} catch (const FlycastException& e) {}
-					}
+					gdrom = std::unique_ptr<Disc>(OpenDisc(gdrom_parent_path + ".chd", digest));
+				} catch (const FlycastException& e) {
+					WARN_LOG(NAOMI, "Opening parent chd failed: %s", e.what());
 				}
-				if (gdrom == nullptr)
-					throw NaomiCartException("Naomi GDROM: Cannot open " + gdrom_path + ".chd or " + gdrom_path + ".gdi");
 			}
+			if (gdrom == nullptr)
+				throw NaomiCartException("Naomi GDROM: Cannot open " + gdrom_path + ".chd");
 		}
 
 		// primary volume descriptor
@@ -638,13 +629,6 @@ void *GDCartridge::GetDmaPtr(u32 &size)
 	dimm_cur_address = DmaOffset & (dimm_data_size-1);
 	size = std::min(size, dimm_data_size - dimm_cur_address);
 	return dimm_data + dimm_cur_address;
-}
-
-void GDCartridge::AdvancePtr(u32 size)
-{
-	dimm_cur_address += size;
-	if(dimm_cur_address >= dimm_data_size)
-		dimm_cur_address %= dimm_data_size;
 }
 
 bool GDCartridge::Read(u32 offset, u32 size, void *dst)

@@ -164,12 +164,6 @@ void palette_update()
 		pal_hash_256[i] = XXH32(&PALETTE_RAM[i << 8], 256 * 4, 7);
 }
 
-void forcePaletteUpdate()
-{
-	pal_needs_update = true;
-}
-
-
 static std::vector<vram_block*> VramLocks[VRAM_SIZE_MAX / PAGE_SIZE];
 
 //List functions
@@ -845,6 +839,7 @@ void BaseTextureCacheData::CheckCustomTexture()
 
 void BaseTextureCacheData::SetDirectXColorOrder(bool enabled) {
 	pvrTexInfo = enabled ? directx::pvrTexInfo : opengl::pvrTexInfo;
+	pal_needs_update = true;
 }
 
 template<typename Packer>
@@ -990,7 +985,7 @@ public:
 
 	template<typename T>
 	void write(T pixel) {
-		pvr_write32p(dstAddr, pixel);
+		pvr_write32p<T, true>(dstAddr, pixel);
 		dstAddr += sizeof(T);
 	}
 
@@ -1178,14 +1173,12 @@ public:
 
 	void write(int xmin, int xmax, const u8 *& pixel, int y)
 	{
-		for (int c = xmin; c < xmax - 3; c += 4)
+		for (int c = xmin; c < xmax; c++)
 		{
-			pixWriter.write((u32)((pixel[Blue + 4] << 24) | (pixel[Red] << 16) | (pixel[Green] << 8) | pixel[Blue]));
+			pixWriter.write(pixel[Blue]);
+			pixWriter.write(pixel[Green]);
+			pixWriter.write(pixel[Red]);
 			pixel += 4;
-			pixWriter.write((u32)((pixel[Green + 4] << 24) | (pixel[Blue + 4] << 16) | (pixel[Red] << 8) | pixel[Green]));
-			pixel += 4;
-			pixWriter.write((u32)((pixel[Red + 4] << 24) | (pixel[Green + 4] << 16) | (pixel[Blue + 4] << 8) | pixel[Red]));
-			pixel += 8;
 		}
 	}
 

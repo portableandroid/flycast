@@ -40,7 +40,9 @@ CustomStorage& customStorage()
 		std::string getParentPath(const std::string& path) override { die("Not implemented"); }
 		std::string getSubPath(const std::string& reference, const std::string& relative) override { die("Not implemented"); }
 		FileInfo getFileInfo(const std::string& path) override { die("Not implemented"); }
-		void addStorage(bool isDirectory, bool writeAccess, void (*callback)(bool cancelled, std::string selectedPath)) override {
+		bool exists(const std::string& path) override { die("Not implemented"); }
+		bool addStorage(bool isDirectory, bool writeAccess, const std::string& description,
+				void (*callback)(bool cancelled, std::string selectedPath)) override {
 			die("Not implemented");
 		}
 	};
@@ -184,11 +186,13 @@ public:
 #ifndef _WIN32
 		struct stat st;
 		if (flycast::stat(path.c_str(), &st) != 0) {
-			INFO_LOG(COMMON, "Cannot stat file '%s' errno %d", path.c_str(), errno);
+			if (errno != ENOENT)
+				INFO_LOG(COMMON, "Cannot stat file '%s' errno %d", path.c_str(), errno);
 			throw StorageException("Cannot stat " + path);
 		}
 		info.isDirectory = S_ISDIR(st.st_mode);
 		info.size = st.st_size;
+		info.updateTime = st.st_mtime;
 #else // _WIN32
 		nowide::wstackstring wname;
 		if (wname.convert(path.c_str()))
@@ -198,19 +202,42 @@ public:
 			{
 				info.isDirectory = (fileAttribs.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
 				info.size = fileAttribs.nFileSizeLow + ((u64)fileAttribs.nFileSizeHigh << 32);
+				u64 t = ((u64)fileAttribs.ftLastWriteTime.dwHighDateTime << 32) | fileAttribs.ftLastWriteTime.dwLowDateTime;
+				info.updateTime = t / 10000000 - 11644473600LL;	// 100-nano to secs minus (unix epoch - windows epoch)
 			}
 			else
 			{
-				INFO_LOG(COMMON, "Cannot get attrbutes of '%s' error 0x%x", path.c_str(), GetLastError());
+				const int error = GetLastError();
+				if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND)
+					INFO_LOG(COMMON, "Cannot get attributes of '%s' error 0x%x", path.c_str(), error);
+				_set_errno(error);
 				throw StorageException("Cannot get attributes of " + path);
 			}
 		}
 		else
 		{
+			_set_errno(EINVAL);
 			throw StorageException("Invalid file name " + path);
 		}
 #endif
 		return info;
+	}
+
+	bool exists(const std::string& path) override
+	{
+#ifndef _WIN32
+		struct stat st;
+		return flycast::stat(path.c_str(), &st) == 0;
+#else // _WIN32
+		nowide::wstackstring wname;
+		if (wname.convert(path.c_str()))
+		{
+			WIN32_FILE_ATTRIBUTE_DATA fileAttribs;
+			if (GetFileAttributesExW(wname.get(), GetFileExInfoStandard, &fileAttribs))
+				return true;
+		}
+		return false;
+#endif
 	}
 
 private:
@@ -314,6 +341,14 @@ FileInfo AllStorage::getFileInfo(const std::string& path)
 		return stdStorage.getFileInfo(path);
 }
 
+bool AllStorage::exists(const std::string& path)
+{
+	if (customStorage().isKnownPath(path))
+		return customStorage().exists(path);
+	else
+		return stdStorage.exists(path);
+}
+
 std::string AllStorage::getDefaultDirectory()
 {
 	std::string directory;
@@ -358,9 +393,10 @@ AllStorage& storage()
 	return storage;
 }
 
-void addStorage(bool isDirectory, bool writeAccess, void (*callback)(bool cancelled, std::string selectedPath))
+bool addStorage(bool isDirectory, bool writeAccess, const std::string& description,
+		void (*callback)(bool cancelled, std::string selectedPath))
 {
-	customStorage().addStorage(isDirectory, writeAccess, callback);
+	return customStorage().addStorage(isDirectory, writeAccess, description, callback);
 }
 
 }
