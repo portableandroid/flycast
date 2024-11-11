@@ -80,7 +80,9 @@ public:
 	// Returns true if using 16:9 anamorphic screen ratio
 	bool isWidescreen() const { return widescreen_cheat != nullptr; }
 	void addGameSharkCheat(const std::string& name, const std::string& s);
-
+#ifdef PORTANDROID
+    void setGameId(const std::string& id) { gameId = id; }
+#endif
 private:
 	u32 readRam(u32 addr, u32 bits);
 	void writeRam(u32 addr, u32 value, u32 bits);

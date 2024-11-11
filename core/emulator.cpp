@@ -747,6 +747,9 @@ void Emulator::term()
 		state = Terminated;
 	}
 	addrspace::release();
+#ifdef PORTANDROID
+    state = Uninitialized;
+#endif
 }
 
 void Emulator::stop()
@@ -776,7 +779,7 @@ void Emulator::stop()
 	}
 	else
 	{
-#ifdef __ANDROID__
+#if defined(__ANDROID__) && !defined(PORTANDROID)
 		// defer stopping audio until after the current frame is finished
 		// normally only useful on android due to multithreading
 		stopRequested = true;

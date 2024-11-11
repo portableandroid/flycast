@@ -2387,10 +2387,29 @@ bool retro_unserialize(const void * data, size_t size)
 // Cheats
 void retro_cheat_reset()
 {
+#ifdef PORTANDROID
+    cheatManager.setGameId("");
+    cheatManager.reset(settings.content.gameId);
+#endif
    // Nothing to do here
 }
-void retro_cheat_set(unsigned unused, bool unused1, const char* unused2)
+void retro_cheat_set(unsigned index, bool enabled, const char* code)
 {
+#ifdef PORTANDROID
+    if(enabled) {
+        try {
+            cheatManager.addGameSharkCheat("cheat", code);
+            size_t count = cheatManager.cheatCount();
+            // enable new cheat
+            if(count > 0) {
+                cheatManager.enableCheat(count - 1, true);
+            }
+        }catch (const FlycastException& e) {
+            ERROR_LOG(COMMON, "%s", e.what());
+            os_notify(e.what(), 5000);
+        }
+    }
+#endif
    // Nothing to do here
 }
 
