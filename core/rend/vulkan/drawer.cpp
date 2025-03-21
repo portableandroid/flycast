@@ -22,7 +22,7 @@
 #include "hw/pvr/pvr_mem.h"
 #include "rend/sorter.h"
 
-TileClipping BaseDrawer::SetTileClip(u32 val, vk::Rect2D& clipRect)
+TileClipping BaseDrawer::SetTileClip(vk::CommandBuffer cmdBuffer, u32 val, vk::Rect2D& clipRect)
 {
 	int rect[4] = {};
 	TileClipping clipmode = ::GetTileClip(val, matrices.GetViewportMatrix(), rect);
@@ -33,6 +33,10 @@ TileClipping BaseDrawer::SetTileClip(u32 val, vk::Rect2D& clipRect)
 		clipRect.extent.width = rect[2];
 		clipRect.extent.height = rect[3];
 	}
+	if (clipmode == TileClipping::Outside)
+		SetScissor(cmdBuffer, clipRect);
+	else
+		SetScissor(cmdBuffer, baseScissor);
 
 	return clipmode;
 }
@@ -76,7 +80,7 @@ void BaseDrawer::SetBaseScissor(const vk::Extent2D& viewport)
 	}
 	else
 	{
-		baseScissor = { 0, 0, (u32)viewport.width, (u32)viewport.height };
+		baseScissor = vk::Rect2D{ {0, 0}, {(u32)viewport.width, (u32)viewport.height} };
 	}
 }
 
@@ -169,11 +173,7 @@ void Drawer::DrawPoly(const vk::CommandBuffer& cmdBuffer, u32 listType, bool sor
 	CommandBufferDebugScope _(cmdBuffer, "DrawPoly", scopeColor);
 
 	vk::Rect2D scissorRect;
-	TileClipping tileClip = SetTileClip(poly.tileclip, scissorRect);
-	if (tileClip == TileClipping::Outside)
-		SetScissor(cmdBuffer, scissorRect);
-	else
-		SetScissor(cmdBuffer, baseScissor);
+	TileClipping tileClip = SetTileClip(cmdBuffer, poly.tileclip, scissorRect);
 
 	float trilinearAlpha = 1.f;
 	if (poly.tsp.FilterMode > 1 && poly.pcw.Texture && listType != ListType_Punch_Through && poly.tcw.MipMapped == 1)
@@ -263,11 +263,7 @@ void Drawer::DrawSorted(const vk::CommandBuffer& cmdBuffer, const std::vector<So
 			vk::Pipeline pipeline = pipelineManager->GetDepthPassPipeline(polyParam.isp.CullMode, polyParam.isNaomi2());
 			cmdBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
 			vk::Rect2D scissorRect;
-			TileClipping tileClip = SetTileClip(polyParam.tileclip, scissorRect);
-			if (tileClip == TileClipping::Outside)
-				SetScissor(cmdBuffer, scissorRect);
-			else
-				SetScissor(cmdBuffer, baseScissor);
+			SetTileClip(cmdBuffer, polyParam.tileclip, scissorRect);
 			cmdBuffer.drawIndexed(param.count, 1, pvrrc.idx.size() + param.first, 0, 0);
 		}
 	}
@@ -296,12 +292,12 @@ void Drawer::DrawModVols(const vk::CommandBuffer& cmdBuffer, int first, int coun
 	CommandBufferDebugScope _(cmdBuffer, "DrawModVols", scopeColor);
 
 	cmdBuffer.bindVertexBuffers(0, curMainBuffer, offsets.modVolOffset);
-	SetScissor(cmdBuffer, baseScissor);
 
 	ModifierVolumeParam* params = &pvrrc.global_param_mvo[first];
 
 	int mod_base = -1;
 	vk::Pipeline pipeline;
+	vk::Rect2D scissorRect;
 
 	for (int cmv = 0; cmv < count; cmv++)
 	{
@@ -322,6 +318,8 @@ void Drawer::DrawModVols(const vk::CommandBuffer& cmdBuffer, int first, int coun
 
 		cmdBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
 		descriptorSets.bindPerPolyDescriptorSets(cmdBuffer, param, first + cmv, curMainBuffer, offsets.naomi2ModVolOffset);
+		SetTileClip(cmdBuffer, param.tileclip, scissorRect);
+		// TODO inside clipping
 
 		cmdBuffer.draw(param.count * 3, 1, param.first * 3, 0);
 
@@ -335,6 +333,7 @@ void Drawer::DrawModVols(const vk::CommandBuffer& cmdBuffer, int first, int coun
 		}
 	}
 	cmdBuffer.bindVertexBuffers(0, curMainBuffer, {0});
+	SetTileClip(cmdBuffer, 0, scissorRect);
 
 	const std::array<float, 6> pushConstants = { 1 - FPU_SHAD_SCALE.scale_factor / 256.f, 0, 0, 0, 0, 0 };
 	cmdBuffer.pushConstants<float>(pipelineManager->GetPipelineLayout(), vk::ShaderStageFlagBits::eFragment, 0, pushConstants);
@@ -636,12 +635,18 @@ void TextureDrawer::EndRenderPass()
 
 void ScreenDrawer::Init(SamplerManager *samplerManager, ShaderManager *shaderManager, const vk::Extent2D& viewport)
 {
+	emulateFramebuffer = config::EmulateFramebuffer;
 	this->shaderManager = shaderManager;
 	if (this->viewport != viewport)
 	{
-		framebuffers.clear();
-		colorAttachments.clear();
-		depthAttachment.reset();
+		if (!framebuffers.empty()) {
+			verify(commandPool != nullptr);
+			commandPool->addToFlight(new Deleter(std::move(framebuffers)));
+		}
+		if (!colorAttachments.empty())
+			commandPool->addToFlight(new Deleter(std::move(colorAttachments)));
+		if (depthAttachment)
+			commandPool->addToFlight(new Deleter(depthAttachment.release()));
 		transitionNeeded.clear();
 		clearNeeded.clear();
 	}
@@ -747,7 +752,7 @@ vk::CommandBuffer ScreenDrawer::BeginRenderPass()
 		{
 			setImageLayout(commandBuffer, colorAttachments[GetCurrentImage()]->GetImage(), vk::Format::eR8G8B8A8Unorm,
 					1, vk::ImageLayout::eUndefined,
-					config::EmulateFramebuffer ? vk::ImageLayout::eTransferSrcOptimal : vk::ImageLayout::eShaderReadOnlyOptimal);
+					emulateFramebuffer ? vk::ImageLayout::eTransferSrcOptimal : vk::ImageLayout::eShaderReadOnlyOptimal);
 			transitionNeeded[GetCurrentImage()] = false;
 		}
 
@@ -774,7 +779,7 @@ void ScreenDrawer::EndRenderPass()
 	if (!renderPassStarted)
 		return;
 	currentCommandBuffer.endRenderPass();
-	if (config::EmulateFramebuffer)
+	if (emulateFramebuffer)
 	{
 		scaleAndWriteFramebuffer(currentCommandBuffer, colorAttachments[GetCurrentImage()].get());
 	}

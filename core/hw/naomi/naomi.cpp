@@ -180,8 +180,9 @@ static void Naomi_DmaStart(u32 addr, u32 data)
 
 void Naomi_setDmaDelay()
 {
-	if (settings.content.gameId == "FORCE FIVE")
-		// 7 MB/s
+	if (settings.platform.isAtomiswave() || settings.content.gameId == "FORCE FIVE"
+			|| settings.content.gameId == "KENJU")
+		// 7 MB/s for Atomiwave games and conversions
 		dmaXferDelay = 27;
 	else
 		dmaXferDelay = 10;
@@ -200,8 +201,6 @@ static void Naomi_DmaEnable(u32 addr, u32 data)
 
 void naomi_reg_Init()
 {
-	networkOutput.init();
-
 	static const u8 romSerialData[0x84] = {
 		0x19, 0x00, 0xaa, 0x55,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -216,9 +215,18 @@ void naomi_reg_Init()
 		dmaSchedId = sh4_sched_register(0, naomiDmaSched);
 }
 
+// Sets the full content of the rom board serial eeprom (132 bytes)
+// including response to reset and read/write passwords.
 void setGameSerialId(const u8 *data)
 {
 	romSerialId.setData(data);
+}
+
+// Return the protected data from the rom board serial eeprom (112 bytes)
+// excluding response to reset and passwords.
+const u8 *getGameSerialId()
+{
+	return romSerialId.getProtectedData();
 }
 
 void naomi_reg_Term()

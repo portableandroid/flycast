@@ -19,7 +19,6 @@
 #include "d3d_renderer.h"
 #include "hw/pvr/ta.h"
 #include "hw/pvr/pvr_mem.h"
-#include "rend/tileclip.h"
 #include "ui/gui.h"
 #include "rend/sorter.h"
 
@@ -140,7 +139,7 @@ bool D3DRenderer::Init()
 	success &= (bool)shaders.getVertexShader(true);
 	success &= SUCCEEDED(device->CreateTexture(32, 32, 1, D3DUSAGE_DYNAMIC, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &paletteTexture.get(), 0));
 	success &= SUCCEEDED(device->CreateTexture(128, 2, 1, D3DUSAGE_DYNAMIC, D3DFMT_A8, D3DPOOL_DEFAULT, &fogTexture.get(), 0));
-	fog_needs_update = true;
+	updateFogTable = true;
 
 	if (!success)
 	{
@@ -200,8 +199,8 @@ void D3DRenderer::postReset()
 	verify(rc);
 	rc = SUCCEEDED(device->CreateTexture(128, 2, 1, D3DUSAGE_DYNAMIC, D3DFMT_A8, D3DPOOL_DEFAULT, &fogTexture.get(), 0));
 	verify(rc);
-	fog_needs_update = true;
-	palette_updated = true;
+	updateFogTable = true;
+	updatePalette = true;
 }
 
 void D3DRenderer::Term()
@@ -300,9 +299,10 @@ void D3DRenderer::RenderFramebuffer(const FramebufferInfo& info)
 
 	aspectRatio = getDCFramebufferAspectRatio();
 	displayFramebuffer();
-	DrawOSD(false);
+	drawOSD();
 	frameRendered = true;
 	frameRenderedOnce = true;
+	clearLastFrame = false;
 	theDXContext.setFrameRendered();
 }
 
@@ -316,8 +316,10 @@ void D3DRenderer::Process(TA_context* ctx)
 	if (settings.platform.isNaomi2())
 		throw FlycastException("DirectX 9 doesn't support Naomi 2 games. Select a different graphics API");
 
-	if (KillTex)
+	if (resetTextureCache) {
 		texCache.Clear();
+		resetTextureCache = false;
+	}
 	texCache.Cleanup();
 
 	ta_parse(ctx, false);
@@ -334,6 +336,25 @@ inline void D3DRenderer::setTexMode(D3DSAMPLERSTATETYPE state, u32 clamp, u32 mi
 		else
 			devCache.SetSamplerState(0, state, D3DTADDRESS_WRAP);
 	}
+}
+
+TileClipping D3DRenderer::setTileClip(u32 tileclip, int clip_rect[4])
+{
+	TileClipping clipmode = GetTileClip(tileclip, matrices.GetViewportMatrix(), clip_rect);
+	if (clipmode == TileClipping::Outside)
+	{
+		devCache.SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
+		RECT rect { clip_rect[0], clip_rect[1], clip_rect[0] + clip_rect[2], clip_rect[1] + clip_rect[3] };
+		// TODO cache
+		device->SetScissorRect(&rect);
+	}
+	else
+	{
+		devCache.SetRenderState(D3DRS_SCISSORTESTENABLE, scissorEnable);
+		if (scissorEnable)
+			device->SetScissorRect(&scissorRect);
+	}
+	return clipmode;
 }
 
 template <u32 Type, bool SortingEnabled>
@@ -354,7 +375,7 @@ void D3DRenderer::setGPState(const PolyParam *gp)
 	int fog_ctrl = config::Fog ? gp->tsp.FogCtrl : 2;
 
 	int clip_rect[4] = {};
-	TileClipping clipmode = GetTileClip(gp->tileclip, matrices.GetViewportMatrix(), clip_rect);
+	TileClipping clipmode = setTileClip(gp->tileclip, clip_rect);
 	D3DTexture *texture = (D3DTexture *)gp->texture;
 	int gpuPalette = texture == nullptr || !texture->gpuPalette ? 0
 			: gp->tsp.FilterMode + 1;
@@ -400,23 +421,10 @@ void D3DRenderer::setGPState(const PolyParam *gp)
 	devCache.SetVertexShader(shaders.getVertexShader(gp->pcw.Gouraud));
 	devCache.SetRenderState(D3DRS_SHADEMODE, gp->pcw.Gouraud == 1 ? D3DSHADE_GOURAUD : D3DSHADE_FLAT);
 
-	if (clipmode == TileClipping::Outside)
+	if (clipmode == TileClipping::Inside)
 	{
-		devCache.SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
-		RECT rect { clip_rect[0], clip_rect[1], clip_rect[0] + clip_rect[2], clip_rect[1] + clip_rect[3] };
-		// TODO cache
-		device->SetScissorRect(&rect);
-	}
-	else
-	{
-		devCache.SetRenderState(D3DRS_SCISSORTESTENABLE, scissorEnable);
-		if (scissorEnable)
-			device->SetScissorRect(&scissorRect);
-		if (clipmode == TileClipping::Inside)
-		{
-			float f[] = { (float)clip_rect[0], (float)clip_rect[1], (float)(clip_rect[0] + clip_rect[2]), (float)(clip_rect[1] + clip_rect[3]) };
-			device->SetPixelShaderConstantF(4, f, 1);
-		}
+		float f[] = { (float)clip_rect[0], (float)clip_rect[1], (float)(clip_rect[0] + clip_rect[2]), (float)(clip_rect[1] + clip_rect[3]) };
+		device->SetPixelShaderConstantF(4, f, 1);
 	}
 
 	const u32 stencil = (gp->pcw.Shadow != 0) ? 0x80 : 0;
@@ -689,6 +697,7 @@ void D3DRenderer::drawModVols(int first, int count)
 	devCache.SetRenderState(D3DRS_COLORWRITEENABLE, 0);
 
 	int mod_base = -1;
+	int clip_rect[4] = {};
 
 	for (int cmv = 0; cmv < count; cmv++)
 	{
@@ -707,6 +716,9 @@ void D3DRenderer::drawModVols(int first, int count)
 		else
 			setMVS_Mode(Xor, param.isp);	// XOR'ing (closed volume)
 
+		setTileClip(param.tileclip, clip_rect);
+		//TODO inside clipping
+
 		device->DrawPrimitive(D3DPT_TRIANGLELIST, param.first * 3, param.count);
 
 		if (mv_mode == 1 || mv_mode == 2)
@@ -721,6 +733,7 @@ void D3DRenderer::drawModVols(int first, int count)
 	devCache.SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
 	//enable color writes
 	devCache.SetRenderState(D3DRS_COLORWRITEENABLE, D3DCOLORWRITEENABLE_ALPHA | D3DCOLORWRITEENABLE_RED | D3DCOLORWRITEENABLE_GREEN | D3DCOLORWRITEENABLE_BLUE);
+	setTileClip(0, clip_rect);
 
 	//black out any stencil with '1'
 	devCache.SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
@@ -1167,9 +1180,10 @@ bool D3DRenderer::Render()
 	{
 		aspectRatio = getOutputFramebufferAspectRatio();
 		displayFramebuffer();
-		DrawOSD(false);
+		drawOSD();
 		frameRendered = true;
 		frameRenderedOnce = true;
+		clearLastFrame = false;
 		theDXContext.setFrameRendered();
 	}
 
@@ -1270,7 +1284,7 @@ void D3DRenderer::displayFramebuffer()
 
 bool D3DRenderer::RenderLastFrame()
 {
-	if (!frameRenderedOnce || !theDXContext.isReady())
+	if (clearLastFrame || !frameRenderedOnce || !theDXContext.isReady())
 		return false;
 	backbuffer.reset();
 	bool rc = SUCCEEDED(device->GetRenderTarget(0, &backbuffer.get()));
@@ -1283,9 +1297,9 @@ bool D3DRenderer::RenderLastFrame()
 
 void D3DRenderer::updatePaletteTexture()
 {
-	if (!palette_updated)
+	if (!updatePalette)
 		return;
-	palette_updated = false;
+	updatePalette = false;
 
 	D3DLOCKED_RECT rect;
 	bool rc = SUCCEEDED(paletteTexture->LockRect(0, &rect, nullptr, 0));
@@ -1307,9 +1321,9 @@ void D3DRenderer::updatePaletteTexture()
 
 void D3DRenderer::updateFogTexture()
 {
-	if (!fog_needs_update || !config::Fog)
+	if (!updateFogTable || !config::Fog)
 		return;
-	fog_needs_update = false;
+	updateFogTable = false;
 	u8 temp_tex_buffer[256];
 	MakeFogTexture(temp_tex_buffer);
 
@@ -1330,9 +1344,9 @@ void D3DRenderer::updateFogTexture()
 	device->SetSamplerState(2, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
 }
 
-void D3DRenderer::DrawOSD(bool clear_screen)
+void D3DRenderer::drawOSD()
 {
-	theDXContext.setOverlay(!clear_screen);
+	theDXContext.setOverlay(true);
 	gui_display_osd();
 	theDXContext.setOverlay(false);
 }

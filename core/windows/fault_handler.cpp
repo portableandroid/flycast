@@ -24,6 +24,14 @@
 
 static PVOID vectoredHandler;
 static LONG (WINAPI *prevExceptionHandler)(EXCEPTION_POINTERS *ep);
+#ifndef LIBRETRO
+const char *getThreadName();
+#else
+// TODO
+static const char *getThreadName() {
+	return "";
+}
+#endif
 
 static void readContext(const EXCEPTION_POINTERS *ep, host_context_t &context)
 {
@@ -128,9 +136,11 @@ static LONG WINAPI exceptionHandler(EXCEPTION_POINTERS *ep)
 	// texture protection in VRAM
 	if (VramLockedWrite(address))
 		return EXCEPTION_CONTINUE_EXECUTION;
+#if FEAT_SHREC == DYNAREC_JIT
 	// FPCB jump table protection
 	if (addrspace::bm_lockedWrite(address))
 		return EXCEPTION_CONTINUE_EXECUTION;
+#endif
 
 	host_context_t context;
 	readContext(ep, context);
@@ -143,7 +153,7 @@ static LONG WINAPI exceptionHandler(EXCEPTION_POINTERS *ep)
 	}
 #endif
 
-	ERROR_LOG(COMMON, "[GPF] PC %p unhandled access to %p", (void *)context.pc, address);
+	ERROR_LOG(COMMON, "[GPF] Thread:%s PC %p unhandled access to %p", getThreadName(), (void *)context.pc, address);
 	if (prevExceptionHandler != nullptr)
 		prevExceptionHandler(ep);
 

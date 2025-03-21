@@ -1,6 +1,7 @@
 #pragma once
 #include "types.h"
 #include <cstring>
+#include <memory>
 
 enum MapleDeviceType
 {
@@ -22,6 +23,7 @@ enum MapleDeviceType
 	MDT_RacingController     = 15,
 	MDT_DenshaDeGoController = 16,
 	MDT_Dreameye             = 17,
+	MDT_SegaControllerXL     = 18,
 	MDT_Count
 };
 
@@ -122,4 +124,4 @@ const u8 *getRfidCardData(int playerNum);
 void setRfidCardData(int playerNum, u8 *data);
 
 struct maple_naomi_jamma;
-maple_naomi_jamma *getMieDevice();
+std::shared_ptr<maple_naomi_jamma> getMieDevice();

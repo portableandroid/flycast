@@ -64,22 +64,24 @@ public:
 
 	void Process(TA_context* ctx) override
 	{
-		if (ctx->rend.isRTT)
+		if (emulateFramebuffer != config::EmulateFramebuffer)
+		{
 			screenDrawer.EndFrame();
+			VulkanContext::Instance()->WaitIdle();
+			screenDrawer.Term();
+			screenDrawer.Init(&samplerManager, &oitShaderManager, &oitBuffers, viewport);
+			BaseInit(screenDrawer.GetRenderPass(), 2);
+			emulateFramebuffer = config::EmulateFramebuffer;
+		}
+		else if (ctx->rend.isRTT) {
+			screenDrawer.EndFrame();
+		}
 		BaseVulkanRenderer::Process(ctx);
 	}
 
 	bool Render() override
 	{
 		try {
-			if (emulateFramebuffer != config::EmulateFramebuffer)
-			{
-				VulkanContext::Instance()->WaitIdle();
-				screenDrawer.Term();
-				screenDrawer.Init(&samplerManager, &oitShaderManager, &oitBuffers, viewport);
-				BaseInit(screenDrawer.GetRenderPass(), 2);
-				emulateFramebuffer = config::EmulateFramebuffer;
-			}
 			OITDrawer *drawer;
 			if (pvrrc.isRTT)
 				drawer = &textureDrawer;
@@ -103,6 +105,8 @@ public:
 
 	bool Present() override
 	{
+		if (clearLastFrame)
+			return false;
 		if (config::EmulateFramebuffer || framebufferRendered)
 			return presentFramebuffer();
 		else

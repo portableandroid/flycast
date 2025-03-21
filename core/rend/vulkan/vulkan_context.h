@@ -87,7 +87,7 @@ public:
 
 #include "vmallocator.h"
 #include "quad.h"
-#include "rend/TexCache.h"
+#include "rend/texconv.h"
 #include "overlay.h"
 #include "wsi/context.h"
 #include <vector>
@@ -240,7 +240,7 @@ private:
 	vk::UniqueSwapchainKHR swapChain;
 	std::vector<vk::UniqueImageView> imageViews;
 	u32 currentImage = 0;
-	vk::Format colorFormat = vk::Format::eUndefined;
+	vk::Format presentFormat = vk::Format::eUndefined;
 
 	vk::Queue graphicsQueue;
 	vk::Queue presentQueue;

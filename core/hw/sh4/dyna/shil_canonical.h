@@ -34,6 +34,7 @@
 	#define shil_cf_arg_u32(x) sh4Dynarec->canonParam(op, &op->x, CPT_u32);
 	#define shil_cf_arg_f32(x) sh4Dynarec->canonParam(op, &op->x, CPT_f32);
 	#define shil_cf_arg_ptr(x) sh4Dynarec->canonParam(op, &op->x, CPT_ptr);
+	#define shil_cf_arg_sh4ctx() sh4Dynarec->canonParam(op, nullptr, CPT_sh4ctx);
 	#define shil_cf_rv_u32(x) sh4Dynarec->canonParam(op, &op->x, CPT_u32rv);
 	#define shil_cf_rv_f32(x) sh4Dynarec->canonParam(op, &op->x, CPT_f32rv);
 	#define shil_cf_rv_u64(x) sh4Dynarec->canonParam(op, &op->rd, CPT_u64rvL); sh4Dynarec->canonParam(op, &op->rd2, CPT_u64rvH);
@@ -140,19 +141,11 @@ shil_compile( \
 template<int Stride = 1>
 static inline float innerProduct(const float *f1, const float *f2)
 {
-#if HOST_CPU == CPU_X86 || HOST_CPU == CPU_X64 || HOST_CPU == CPU_ARM64
 	const double f = (double)f1[0] * f2[Stride * 0]
 				   + (double)f1[1] * f2[Stride * 1]
 				   + (double)f1[2] * f2[Stride * 2]
 				   + (double)f1[3] * f2[Stride * 3];
 	return fixNaN((float)f);
-#else
-	const float f = f1[0] * f2[Stride * 0]
-				  + f1[1] * f2[Stride * 1]
-				  + f1[2] * f2[Stride * 2]
-				  + f1[3] * f2[Stride * 3];
-	return fixNaN(f);
-#endif
 }
 
 #endif
@@ -227,11 +220,12 @@ shil_opc_end()
 shil_opc(sync_fpscr)
 shil_canonical
 (
-void, f1, (),
-	UpdateFPSCR();
+void, f1, (Sh4Context *ctx),
+	Sh4Context::UpdateFPSCR(ctx);
 )
 shil_compile
 (
+	shil_cf_arg_sh4ctx();
 	shil_cf(f1);
 )
 shil_opc_end()
@@ -660,7 +654,8 @@ shil_opc_end()
 shil_opc(div1)
 shil_canonical
 (
-u64,f1,(u32 a, s32 b, u32 T),
+u64,f1,(u32 a, s32 b, u32 T, Sh4Context *ctx),
+	sr_t& sr = ctx->sr;
 	bool qxm = sr.Q ^ sr.M;
 	sr.Q = (int)a < 0;
 	a = (a << 1) | T;
@@ -674,6 +669,7 @@ u64,f1,(u32 a, s32 b, u32 T),
 )
 shil_compile
 (
+	shil_cf_arg_sh4ctx();
 	shil_cf_arg_u32(rs3);
 	shil_cf_arg_u32(rs2);
 	shil_cf_arg_u32(rs1);
@@ -723,27 +719,33 @@ shil_opc(cvt_f2i_t)
 shil_canonical
 (
 u32,f1,(f32 f1),
-	if (f1 > 2147483520.0f) // IEEE 754: 0x4effffff
-		return 0x7fffffff;
-	else
-	{
-		s32 res = (s32)f1;
-
-		// Fix result sign for Intel CPUs
-		if ((u32)res == 0x80000000 && f1 == f1 && *(s32 *)&f1 > 0)
-			res = 0x7fffffff;
-
-		return res;
+	s32 res;
+	if (f1 > 2147483520.0f) { // IEEE 754: 0x4effffff
+		res = 0x7fffffff;
 	}
+	else {
+		res = (s32)f1;
+		// Fix result sign for Intel CPUs
+		if ((u32)res == 0x80000000 && f1 > 0)
+			res = 0x7fffffff;
+	}
+	return res;
 )
-#else
+#elif HOST_CPU == CPU_ARM || HOST_CPU == CPU_ARM64
 shil_canonical
 (
 u32,f1,(f32 f1),
-	if (f1 > 2147483520.0f) // IEEE 754: 0x4effffff
-		return 0x7fffffff;
-	else
-		return (s32)f1;
+	s32 res;
+	if (f1 > 2147483520.0f) { // IEEE 754: 0x4effffff
+		res = 0x7fffffff;
+	}
+	else {
+		res = (s32)f1;
+		// conversion of NaN returns 0 on ARM
+		if (std::isnan(f1))
+			res = 0x80000000;
+	}
+	return res;
 )
 #endif
 
@@ -795,27 +797,15 @@ shil_opc_end()
 shil_opc(pref)
 shil_canonical
 (
-void,f1,(u32 r1),
-	if ((r1>>26) == 0x38) do_sqw_mmu(r1);
-)
-
-shil_canonical
-(
-void,f2,(u32 r1),
-	if ((r1>>26) == 0x38) do_sqw_nommu(r1,sq_both);
+void,f1,(u32 r1, Sh4Context *ctx),
+	if ((r1 >> 26) == 0x38) ctx->doSqWrite(r1, ctx);
 )
 
 shil_compile
 (
+	shil_cf_arg_sh4ctx();
 	shil_cf_arg_u32(rs1);
-	if (CCN_MMUCR.AT)
-	{
-		shil_cf(f1);
-	}
-	else
-	{
-		shil_cf(f2);
-	}
+	shil_cf(f1);
 )
 
 shil_opc_end()

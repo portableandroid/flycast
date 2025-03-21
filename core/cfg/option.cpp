@@ -105,7 +105,11 @@ Option<int> TextureFiltering("rend.TextureFiltering", 0); // Default
 Option<bool> ThreadedRendering("rend.ThreadedRendering", true);
 Option<bool> DupeFrames("rend.DupeFrames", false);
 Option<int> PerPixelLayers("rend.PerPixelLayers", 32);
+#ifdef TARGET_UWP
+Option<bool> NativeDepthInterpolation("rend.NativeDepthInterpolation", true);
+#else
 Option<bool> NativeDepthInterpolation("rend.NativeDepthInterpolation", false);
+#endif
 Option<bool> EmulateFramebuffer("rend.EmulateFramebuffer", false);
 Option<bool> FixUpscaleBleedingEdge("rend.FixUpscaleBleedingEdge", true);
 Option<bool> CustomGpuDriver("rend.CustomGpuDriver", false);
@@ -135,6 +139,7 @@ Option<bool, false> DiscordPresence("DiscordPresence", true);
 #if defined(__ANDROID__) && !defined(LIBRETRO)
 Option<bool, false> UseSafFilePicker("UseSafFilePicker", true);
 #endif
+OptionString LogServer("LogServer", "", "log");
 
 // Profiler
 Option<bool> ProfilerEnabled("Profiler.Enabled");
@@ -161,6 +166,8 @@ Option<int> GGPOChatTimeout("GGPOChatTimeout", 10, "network");
 Option<bool> NetworkOutput("NetworkOutput", false, "network");
 Option<int> MultiboardSlaves("MultiboardSlaves", 1, "network");
 Option<bool> BattleCableEnable("BattleCable", false, "network");
+Option<bool> UseDCNet("DCNet", false, "network");
+OptionString ISPUsername("ISPUsername", "flycast1", "network");
 
 #ifdef USE_OMX
 Option<int> OmxAudioLatency("audio_latency", 100, "omx");
@@ -179,19 +186,19 @@ std::array<Option<MapleDeviceType>, 4> MapleMainDevices {
 	Option<MapleDeviceType>("device3", MDT_None, "input"),
 	Option<MapleDeviceType>("device4", MDT_None, "input"),
 };
-std::array<std::array<Option<MapleDeviceType>, 2>, 4> MapleExpansionDevices {
-	Option<MapleDeviceType>("device1.1", MDT_SegaVMU, "input"),
-	Option<MapleDeviceType>("device1.2", MDT_SegaVMU, "input"),
+std::array<std::array<Option<MapleDeviceType>, 2>, 4> MapleExpansionDevices {{
+	{{Option<MapleDeviceType>("device1.1", MDT_SegaVMU, "input"),
+	Option<MapleDeviceType>("device1.2", MDT_SegaVMU, "input")}},
 
-	Option<MapleDeviceType>("device2.1", MDT_None, "input"),
-	Option<MapleDeviceType>("device2.2", MDT_None, "input"),
+	{{Option<MapleDeviceType>("device2.1", MDT_None, "input"),
+	Option<MapleDeviceType>("device2.2", MDT_None, "input")}},
 
-	Option<MapleDeviceType>("device3.1", MDT_None, "input"),
-	Option<MapleDeviceType>("device3.2", MDT_None, "input"),
+	{{Option<MapleDeviceType>("device3.1", MDT_None, "input"),
+	Option<MapleDeviceType>("device3.2", MDT_None, "input")}},
 
-	Option<MapleDeviceType>("device4.1", MDT_None, "input"),
-	Option<MapleDeviceType>("device4.2", MDT_None, "input"),
-};
+	{{Option<MapleDeviceType>("device4.1", MDT_None, "input"),
+	Option<MapleDeviceType>("device4.2", MDT_None, "input")}},
+}};
 Option<bool> PerGameVmu("PerGameVmu", false, "config");
 #ifdef _WIN32
 Option<bool, false> UseRawInput("RawInput", false, "input");

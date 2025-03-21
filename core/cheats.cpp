@@ -83,7 +83,7 @@ const WidescreenCheat CheatManager::widescreen_cheats[] =
 		{ "T30006M",    nullptr,    { 0x4CF42C, 0x4CF45C, 0x3E1A36, 0x3E1A34, 0x3E1A3C, 0x3E1A54, 0x3E1A5C },
 				{ 0x43F00000, 0x3F400000, 0x08010000, 0, 0, 0, 0 } },
 		{ "MK-5103750", nullptr,    { 0x1FE270 }, { 0x43700000 } },		// Daytona USA (PAL)
-		{ "MK-51037",   nullptr,    { 0x1FC6D0 }, { 0x43700000 } },		// Daytona USA (USA)
+		// breaks online connection { "MK-51037",   nullptr,    { 0x1FC6D0 }, { 0x43700000 } },		// Daytona USA (USA)
 		{ "T9501N-50",  nullptr,    { 0x9821D4 }, { 0x3F400000 } },		// Deadly Skies (PAL)
 		{ "T8116D  50", nullptr,    { 0x2E5530 }, { 0x43700000 } },		// Dead or Alive 2 (PAL)
 		{ "T3601N",     nullptr,    { 0x2F0670 }, { 0x43700000 } },		// Dead or Alive 2 (USA)
@@ -165,8 +165,8 @@ const WidescreenCheat CheatManager::widescreen_cheats[] =
 				{ 0x43F00000, 0x3F400000, 0x3F800000 } },					// Napple Tale: Arsia in Daydream (JP)
 //crash		{ "MK-51178",   nullptr,    { 0x23AF00, 0x23B160, 0x144D40, 0x2105B4, 0x705B40 },
 //				{ 0xBFAAAAAB, 0xBFAAAAAB, 0xBFAAAAAB, 0xBFAAAAAB, 0x44558000 } },	// NBA 2K2
-		{ "T9504M",     nullptr,    { 0xCDE848, 0xCDE844 }, { 0x3F400000, 0x3FA00000 } },	// Nightmare Creatures II (USA)
-		{ "T-9502D-50", nullptr,    { 0xBDE9B0, 0xBDE9C4 }, { 0x3F400000, 0x3FA00000 } },	// Nightmare Creatures II (PAL)
+//		{ "T9504M",     nullptr,    { 0xCDE848, 0xCDE844 }, { 0x3F400000, 0x3FA00000 } },	// Nightmare Creatures II (USA)
+//		{ "T-9502D-50", nullptr,    { 0xBDE9B0, 0xBDE9C4 }, { 0x3F400000, 0x3FA00000 } },	// Nightmare Creatures II (PAL)
 		{ "MK-5110250", nullptr,    { 0x87B5A4 }, { 0x43700000 } },		// Outtrigger (PAL)
 		{ "HDR-0118",   nullptr,    { 0x83E284 }, { 0x43700000 } },		// Outtrigger (JP)
 		{ "T15103D 50", nullptr,    { 0x1EEE78 }, { 0x3F400000 } },		// PenPen (PAL)
@@ -481,6 +481,60 @@ void CheatManager::reset(const std::string& gameId)
 		else if (gameId == "SAMURAI SPIRITS 6" || gameId == "T0002M") {
 			cheats.emplace_back(Cheat::Type::setValue, "fix depth", true, 16, 0x0003e602, 0x0009, true); // nop (shift by 8 bits instead of 10)
 		}
+		else if (gameId == "T-8107N") {	// Fur Fighters (US)
+			// force logging on to use more cycles
+			cheats.emplace_back(Cheat::Type::setValue, "enable logging", true, 32, 0x00314248, 1, true);
+		}
+		else if (gameId == "T-8113D-50") {	// Fur Fighters (EU)
+			// force logging on to use more cycles
+			cheats.emplace_back(Cheat::Type::setValue, "enable logging", true, 32, 0x00314228, 1, true);
+		}
+		// Dricas auth bypass
+		else if (gameId == "T6807M")		// Aero Dancing i
+		{
+			// modem
+			cheats.emplace_back(Cheat::Type::runNextIfEq, "bypass auth ifeq", true, 32, 0x0004b7a0, 0x2fd62fe6, true);
+			cheats.emplace_back(Cheat::Type::setValue, "bypass dricas auth", true, 32, 0x0004b7a0, 0xe000000b, true);		// rts, _mov #0, r0
+			// BBA
+			cheats.emplace_back(Cheat::Type::runNextIfEq, "bba bypass auth ifeq", true, 32, 0x0004af5c, 0x2fd62fe6, true);
+			cheats.emplace_back(Cheat::Type::setValue, "bba bypass dricas auth", true, 32, 0x0004af5c, 0xe000000b, true);
+			// IP check
+			cheats.emplace_back(Cheat::Type::runNextIfEq, "ip check ifeq", true, 32, 0x00020860, 0x4f222fe6, true);
+			cheats.emplace_back(Cheat::Type::setValue, "ip check ok", true, 32, 0x00020860, 0xe000000b, true);
+		}
+		else if (gameId == "T6809M")		// Aero Dancing i - Jikai Saku Made Matemasen
+		{
+			// modem
+			cheats.emplace_back(Cheat::Type::runNextIfEq, "bypass auth ifeq", true, 32, 0x0004b940, 0x2fd62fe6, true);
+			cheats.emplace_back(Cheat::Type::setValue, "bypass dricas auth", true, 32, 0x0004b940, 0xe000000b, true);
+			// BBA
+			cheats.emplace_back(Cheat::Type::runNextIfEq, "bba bypass auth ifeq", true, 32, 0x0004f848, 0x2fd62fe6, true);
+			cheats.emplace_back(Cheat::Type::setValue, "bba bypass dricas auth", true, 32, 0x0004f848, 0xe000000b, true);
+			// IP check
+			cheats.emplace_back(Cheat::Type::runNextIfEq, "ip check ifeq", true, 32, 0x00020980, 0x4f222fe6, true);
+			cheats.emplace_back(Cheat::Type::setValue, "ip check ok", true, 32, 0x00020980, 0xe000000b, true);
+		}
+		else if (gameId == "HDR-0106") {	// Daytona USA (JP)
+			cheats.emplace_back(Cheat::Type::runNextIfEq, "bypass auth ifeq", true, 32, 0x0003ad30, 0x2fd62fe6, true);
+			cheats.emplace_back(Cheat::Type::setValue, "bypass dricas auth", true, 32, 0x0003ad30, 0xe000000b, true);
+		}
+		else if (gameId == "HDR-0073") {	// Sega Tetris
+			cheats.emplace_back(Cheat::Type::runNextIfEq, "bypass auth ifeq", true, 32, 0x000a56f8, 0x2fd62fe6, true);
+			cheats.emplace_back(Cheat::Type::setValue, "bypass dricas auth", true, 32, 0x000a56f8, 0xe000000b, true);
+		}
+		else if (gameId == "T44501M") {		// Golf Shiyou Yo 2
+			cheats.emplace_back(Cheat::Type::runNextIfEq, "bypass auth ifeq", true, 32, 0x0013f150, 0x2fd62fe6, true);
+			cheats.emplace_back(Cheat::Type::setValue, "bypass dricas auth", true, 32, 0x0013f150, 0xe000000b, true);
+		}
+		else if (gameId == "HDR-0124") {	// Hundred Swords
+			cheats.emplace_back(Cheat::Type::runNextIfEq, "bypass auth ifeq", true, 32, 0x006558ac, 0x1f414f22, true);
+			cheats.emplace_back(Cheat::Type::setValue, "bypass dricas auth", true, 32, 0x006558ac, 0xe000000b, true);
+		}
+		else if (gameId == "T43903M") {		// Culdcept II
+			cheats.emplace_back(Cheat::Type::runNextIfEq, "bypass auth ifeq", true, 32, 0x00800524, 0x2fd62fe6, true);
+			cheats.emplace_back(Cheat::Type::setValue, "bypass dricas auth", true, 32, 0x00800524, 0xe000000b, true);
+		}
+
 		if (cheats.size() > cheatCount)
 			setActive(true);
 	}

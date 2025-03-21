@@ -121,7 +121,7 @@ enum AWAVE_KEYS
 	AWAVE_TRIGGER_KEY = 1 << 17,
 };
 
-struct maple_device
+struct maple_device : public std::enable_shared_from_this<maple_device>
 {
 	u8 maple_port;          //raw maple port
 	u8 bus_port;            //0 .. 5
@@ -131,7 +131,7 @@ struct maple_device
 	MapleConfigMap* config;
 
 	//fill in the info
-	void Setup(u32 port, int playerNum = -1);
+	void Setup(u32 bus, u32 port = 5, int playerNum = -1);
 
 	virtual void OnSetup() {};
 	virtual ~maple_device();
@@ -150,7 +150,7 @@ struct maple_device
 	virtual const void *getData(size_t& size) const { size = 0; return nullptr; }
 };
 
-maple_device* maple_Create(MapleDeviceType type);
+std::shared_ptr<maple_device> maple_Create(MapleDeviceType type);
 
 #define MAPLE_PORTS 4
 
@@ -246,7 +246,7 @@ struct maple_base: maple_device
 		u32 resp = Dma(command, &buffer_in[1], buffer_in_len - 4, &buffer_out[1], outlen);
 
 		if (reci & 0x20)
-			reci |= maple_GetAttachedDevices(maple_GetBusId(reci));
+			reci |= maple_GetAttachedDevices(bus_id);
 
 		verify(u8(outlen / 4) * 4 == outlen);
 		buffer_out[0] = (resp << 0 ) | (send << 8) | (reci << 16) | ((outlen / 4) << 24);

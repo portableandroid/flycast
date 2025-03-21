@@ -12,6 +12,11 @@
 #else
 	#define DYNACALL
 #endif
+#ifdef _MSC_VER
+// conversion from 't1' to 't2', possible loss of data
+#pragma warning(disable: 4267)
+#pragma warning(disable: 4244)
+#endif
 
 #include <cstdint>
 #include <cstddef>
@@ -51,8 +56,7 @@ int darw_printf(const char* Text,...);
 #endif
 
 #ifndef TARGET_IPHONE
-#if defined(__APPLE__) && defined(__MACH__) && HOST_CPU == CPU_ARM64
-#define TARGET_ARM_MAC
+#if defined(TARGET_ARM_MAC)
 #include <pthread.h>
 inline static void JITWriteProtect(bool enabled) {
 	if (__builtin_available(macOS 11.0, *))
@@ -159,11 +163,6 @@ struct settings_t
 		float dpi = 96.f;
 		float uiScale = 1.f;
 	} display;
-
-	struct
-	{
-		bool disable_nvmem;
-	} dynarec;
 
 	struct
 	{

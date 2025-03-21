@@ -216,11 +216,6 @@ void DX11Context::term()
 	pDeviceContext.reset();
 	pDevice.reset();
 	d3dcompiler = nullptr;
-	if (d3dcompilerHandle != NULL)
-	{
-		FreeLibrary(d3dcompilerHandle);
-		d3dcompilerHandle = NULL;
-	}
 }
 
 void DX11Context::Present()
@@ -253,18 +248,16 @@ void DX11Context::EndImGuiFrame()
 {
 	if (pDevice && pDeviceContext && renderTargetView)
 	{
-		if (!overlayOnly)
+		if (overlayOnly) {
+			overlay.draw(settings.display.width, settings.display.height, config::FloatVMUs, true);
+		}
+		else
 		{
 			pDeviceContext->OMSetRenderTargets(1, &renderTargetView.get(), nullptr);
 			const FLOAT black[4] { 0.f, 0.f, 0.f, 1.f };
 			pDeviceContext->ClearRenderTargetView(renderTargetView, black);
 			if (renderer != nullptr)
 				renderer->RenderLastFrame();
-		}
-		if (overlayOnly)
-		{
-			if (crosshairsNeeded() || config::FloatVMUs)
-				overlay.draw(settings.display.width, settings.display.height, config::FloatVMUs, true);
 		}
 		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 	}
@@ -350,7 +343,7 @@ void DX11Context::handleDeviceLost()
 	}
 	else
 	{
-		Renderer* rend_norend();
+		Renderer* rend_norend(void);
 		renderer = rend_norend();
 		renderer->Init();
 	}
@@ -361,15 +354,15 @@ const pD3DCompile DX11Context::getCompiler()
 	if (d3dcompiler == nullptr)
 	{
 #ifndef TARGET_UWP
-		d3dcompilerHandle = LoadLibraryA("d3dcompiler_47.dll");
-		if (d3dcompilerHandle == NULL)
-			d3dcompilerHandle = LoadLibraryA("d3dcompiler_46.dll");
-		if (d3dcompilerHandle == NULL)
+		if (!d3dcompilerLib.load("d3dcompiler_47.dll"))
 		{
-			WARN_LOG(RENDERER, "Neither d3dcompiler_47.dll or d3dcompiler_46.dll can be loaded");
-			return D3DCompile;
+			if (!d3dcompilerLib.load("d3dcompiler_46.dll"))
+			{
+				WARN_LOG(RENDERER, "Neither d3dcompiler_47.dll or d3dcompiler_46.dll can be loaded");
+				return D3DCompile;
+			}
 		}
-		d3dcompiler = (pD3DCompile)GetProcAddress(d3dcompilerHandle, "D3DCompile");
+		d3dcompiler = d3dcompilerLib.getFunc("D3DCompile", d3dcompiler);
 #endif
 		if (d3dcompiler == nullptr)
 			d3dcompiler = D3DCompile;

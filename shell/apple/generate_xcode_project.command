@@ -6,7 +6,11 @@ echo "2) iOS"
 read -p "Choose your target platform: " x
 
 if [ $x -eq 2 ]; then
-    option="-DCMAKE_SYSTEM_NAME=iOS"
+    if [ "$(uname -m)" = "arm64" ]; then
+        option="-DCMAKE_SYSTEM_NAME=iOS"
+    else
+        option="-DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+    fi
     lldbinitfolder="emulator-ios"
     echo 'Building iOS xcodeproj for debugging'
     echo 'Remove CODE_SIGNING_ALLOWED=NO in Build Settings if you are using your Apple Developer Certificate for signing'
@@ -31,7 +35,7 @@ if [[ -z "${VULKAN_SDK}" ]]; then
     fi
 fi
 
-cmake -B build -DCMAKE_BUILD_TYPE=Release $option -DCMAKE_XCODE_GENERATE_SCHEME=YES -G "Xcode"
+cmake -B build -DCMAKE_BUILD_TYPE=Release $option -DUSE_BREAKPAD=NO -DCMAKE_XCODE_GENERATE_SCHEME=YES -G "Xcode"
 
 nl=$'\n'
 /usr/bin/sed -i '' -E "s/launchStyle/customLLDBInitFile = \"\$(SRCROOT)\/shell\/apple\/\\${lldbinitfolder}\/LLDBInitFile\"\\${nl}launchStyle/g" build/flycast.xcodeproj/xcshareddata/xcschemes/flycast.xcscheme

@@ -1,5 +1,6 @@
 #include "glcache.h"
 #include "gles.h"
+#include "quad.h"
 #include "rend/tileclip.h"
 #include "rend/osd.h"
 #include "naomi2.h"
@@ -105,6 +106,20 @@ static void SetBaseClipping()
 		glcache.Disable(GL_SCISSOR_TEST);
 }
 
+static TileClipping setTileClip(u32 tileclip, int clip_rect[4])
+{
+	TileClipping clipmode = GetTileClip(tileclip, ViewportMatrix, clip_rect);
+	if (clipmode == TileClipping::Outside)
+	{
+		glcache.Enable(GL_SCISSOR_TEST);
+		glcache.Scissor(clip_rect[0], clip_rect[1], clip_rect[2], clip_rect[3]);
+	}
+	else {
+		SetBaseClipping();
+	}
+	return clipmode;
+}
+
 template <u32 Type, bool SortingEnabled>
 void SetGPState(const PolyParam* gp,u32 cflip=0)
 {
@@ -123,7 +138,7 @@ void SetGPState(const PolyParam* gp,u32 cflip=0)
 	int fog_ctrl = config::Fog ? gp->tsp.FogCtrl : 2;
 
 	int clip_rect[4] = {};
-	TileClipping clipmode = GetTileClip(gp->tileclip, ViewportMatrix, clip_rect);
+	TileClipping clipmode = setTileClip(gp->tileclip, clip_rect);
 	TextureCacheData *texture = (TextureCacheData *)gp->texture;
 	int gpuPalette = texture == nullptr || !texture->gpuPalette ? 0
 			: gp->tsp.FilterMode + 1;
@@ -172,13 +187,6 @@ void SetGPState(const PolyParam* gp,u32 cflip=0)
 	if (clipmode == TileClipping::Inside)
 		glUniform4f(CurrentShader->pp_ClipTest, (float)clip_rect[0], (float)clip_rect[1],
 				(float)(clip_rect[0] + clip_rect[2]), (float)(clip_rect[1] + clip_rect[3]));
-	if (clipmode == TileClipping::Outside)
-	{
-		glcache.Enable(GL_SCISSOR_TEST);
-		glcache.Scissor(clip_rect[0], clip_rect[1], clip_rect[2], clip_rect[3]);
-	}
-	else
-		SetBaseClipping();
 
 	if (config::ModifierVolumes)
 	{
@@ -534,6 +542,9 @@ void DrawModVols(int first, int count)
 		{
 			glcache.UseProgram(gl.modvol_shader.program);
 		}
+		int clip_rect[4];
+		setTileClip(param.tileclip, clip_rect);
+		// TODO inside clipping
 
 		u32 mv_mode = param.isp.DepthMode;
 
@@ -559,6 +570,7 @@ void DrawModVols(int first, int count)
 	SetCull(0);
 	//enable color writes
 	glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+	SetBaseClipping();
 
 	//black out any stencil with '1'
 	glcache.Enable(GL_BLEND);
@@ -632,9 +644,9 @@ void DrawStrips()
 
 void OpenGLRenderer::RenderFramebuffer(const FramebufferInfo& info)
 {
-	initVideoRoutingFrameBuffer();
 	glReadFramebuffer(info);
 	saveCurrentFramebuffer();
+	initVideoRoutingFrameBuffer();
 	getVideoShift(gl.ofbo.shiftX, gl.ofbo.shiftY);
 #ifdef LIBRETRO
 	glBindFramebuffer(GL_FRAMEBUFFER, postProcessor.getFramebuffer(gl.dcfb.width, gl.dcfb.height));
@@ -667,7 +679,7 @@ void OpenGLRenderer::RenderFramebuffer(const FramebufferInfo& info)
 	else
 	{
 		glcache.Disable(GL_BLEND);
-		drawQuad(gl.dcfb.tex, false, false);
+		gl.quad->draw(gl.dcfb.tex, false, false);
 	}
 #ifdef LIBRETRO
 	postProcessor.render(glsm_get_current_framebuffer());
@@ -675,8 +687,9 @@ void OpenGLRenderer::RenderFramebuffer(const FramebufferInfo& info)
 	renderLastFrame();
 #endif
 
-	DrawOSD(false);
+	drawOSD();
 	frameRendered = true;
+	clearLastFrame = false;
 	renderVideoRouting();
 	restoreCurrentFramebuffer();
 }
@@ -704,7 +717,7 @@ void writeFramebufferToVRAM()
 		if (gl.fbscaling.framebuffer == nullptr)
 			gl.fbscaling.framebuffer = std::make_unique<GlFramebuffer>(scaledW, scaledH);
 
-		if (gl.gl_major < 3)
+		if (gl.bogusBlitFramebuffer)
 		{
 			gl.fbscaling.framebuffer->bind();
 			glViewport(0, 0, scaledW, scaledH);
@@ -715,7 +728,7 @@ void writeFramebufferToVRAM()
 			glcache.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glcache.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glcache.Disable(GL_BLEND);
-			drawQuad(gl.ofbo.framebuffer->getTexture(), false);
+			gl.quad->draw(gl.ofbo.framebuffer->getTexture(), false);
 		}
 		else
 		{
@@ -776,7 +789,7 @@ bool OpenGLRenderer::renderLastFrame()
 	else
 		dx = (int)roundf(settings.display.width * (1 - renderAR / screenAR) / 2.f);
 
-	if (gl.gl_major < 3 || config::Rotate90)
+	if (gl.bogusBlitFramebuffer || config::Rotate90)
 	{
 		glViewport(dx, dy, settings.display.width - dx * 2, settings.display.height - dy * 2);
 		glBindFramebuffer(GL_FRAMEBUFFER, gl.ofbo.origFbo);
@@ -800,7 +813,7 @@ bool OpenGLRenderer::renderLastFrame()
 			vertices = sverts;
 		}
 		glcache.Disable(GL_BLEND);
-		drawQuad(framebuffer->getTexture(), config::Rotate90, true, vertices);
+		gl.quad->draw(framebuffer->getTexture(), config::Rotate90, true, vertices);
 	}
 	else
 	{
@@ -859,7 +872,7 @@ bool OpenGLRenderer::GetLastFrame(std::vector<u8>& data, int& width, int& height
 		};
 		vertices = &rvertices[0][0];
 	}
-	drawQuad(framebuffer->getTexture(), config::Rotate90, false, vertices);
+	gl.quad->draw(framebuffer->getTexture(), config::Rotate90, false, vertices);
 
 	data.resize(width * height * 3);
 	glPixelStorei(GL_PACK_ALIGNMENT, 1);
@@ -987,7 +1000,7 @@ static void drawVmuTexture(u8 vmuIndex, int width, int height)
 	};
 	glcache.Enable(GL_BLEND);
 	glcache.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	drawQuad(vmuTextureId[vmuIndex], false, false, vertices, color);
+	gl.quad->draw(vmuTextureId[vmuIndex], false, false, vertices, color);
 }
 
 static void updateLightGunTexture()
@@ -1004,12 +1017,6 @@ static void updateLightGunTexture()
 
 static void drawGunCrosshair(u8 port, int width, int height)
 {
-	if (config::CrosshairColor[port] == 0)
-		return;
-	if (settings.platform.isConsole()
-			&& config::MapleMainDevices[port] != MDT_LightGun)
-		return;
-
 	auto [x, y] = getCrosshairPosition(port);
 #ifdef LIBRETRO
 	float halfWidth = lightgun_crosshair_size / 2.f / config::ScreenStretching * 100.f * config::RenderResolution / 480.f;
@@ -1040,7 +1047,7 @@ static void drawGunCrosshair(u8 port, int width, int height)
 	};
 	glcache.Enable(GL_BLEND);
 	glcache.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	drawQuad(lightgunTextureId, false, false, vertices, color);
+	gl.quad->draw(lightgunTextureId, false, false, vertices, color);
 }
 
 void drawVmusAndCrosshairs(int width, int height)
@@ -1062,10 +1069,9 @@ void drawVmusAndCrosshairs(int width, int height)
 				drawVmuTexture(i, width, height);
 	}
 
-	if (crosshairsNeeded()) {
-		for (int i = 0 ; i < 4 ; i++)
+	for (int i = 0 ; i < 4 ; i++)
+		if (crosshairNeeded(i))
 			drawGunCrosshair(i, width, height);
-	}
 	glCheck();
 }
 

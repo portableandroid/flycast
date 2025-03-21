@@ -20,11 +20,11 @@ jobs:
           - {name: i686-pc-windows-msvc, os: windows-latest, shell: cmd, arch: x86, cmakeArgs: -G Ninja, buildType: Release}
           - {name: apple-darwin, os: macos-latest, shell: sh, cmakeArgs: -G Xcode -DUSE_DISCORD=ON, destDir: osx, buildType: RelWithDebInfo}
           - {name: apple-ios, os: macos-latest, shell: sh, cmakeArgs: -DCMAKE_SYSTEM_NAME=iOS -G Xcode, destDir: ios, buildType: Release}
-          - {name: x86_64-pc-linux-gnu, os: ubuntu-20.04, shell: sh, cmakeArgs: -G Ninja -DUSE_DISCORD=ON, destDir: linux, buildType: RelWithDebInfo}
+          - {name: x86_64-pc-linux-gnu, os: ubuntu-20.04, shell: sh, cmakeArgs: -G Ninja -DUSE_DISCORD=ON -DUSE_LIBCDIO=ON, destDir: linux, buildType: RelWithDebInfo}
           - {name: x86_64-pc-windows-msvc, os: windows-latest, shell: cmd, arch: x64, cmakeArgs: -G Ninja -DUSE_DISCORD=ON, buildType: Release}
-          - {name: x86_64-w64-mingw32, os: windows-latest, shell: 'msys2 {0}', cmakeArgs: -G Ninja -DUSE_DISCORD=ON, destDir: win, buildType: RelWithDebInfo}
-          - {name: libretro-x86_64-pc-linux-gnu, os: ubuntu-latest, shell: sh, cmakeArgs: -DLIBRETRO=ON -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE -G Ninja, buildType: Release}
-          - {name: libretro-x86_64-w64-mingw32, os: windows-latest, shell: 'msys2 {0}', cmakeArgs: -DLIBRETRO=ON -G Ninja, buildType: Release}
+          - {name: x86_64-w64-mingw32, os: windows-latest, shell: 'msys2 {0}', cmakeArgs: -G Ninja -DUSE_DISCORD=ON -DUSE_LIBCDIO=ON, destDir: win, buildType: RelWithDebInfo}
+          - {name: libretro-x86_64-pc-linux-gnu, os: ubuntu-22.04, shell: sh, cmakeArgs: -DLIBRETRO=ON -DUSE_LIBCDIO=ON -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE -G Ninja, buildType: Release}
+          - {name: libretro-x86_64-w64-mingw32, os: windows-latest, shell: 'msys2 {0}', cmakeArgs: -DLIBRETRO=ON -DUSE_LIBCDIO=ON -G Ninja, buildType: Release}
 
     steps:
       - name: Set up build environment (macOS)
@@ -45,7 +45,7 @@ jobs:
         run: |
           sudo add-apt-repository ppa:christianrauch/libdecoration
           sudo apt-get update
-          sudo apt-get -y install ccache libao-dev libasound2-dev libevdev-dev libgl1-mesa-dev liblua5.3-dev libminiupnpc-dev libpulse-dev libsdl2-dev libudev-dev libzip-dev ninja-build libcurl4-openssl-dev
+          sudo apt-get -y install ccache libao-dev libasound2-dev libevdev-dev libgl1-mesa-dev liblua5.3-dev libminiupnpc-dev libpulse-dev libsdl2-dev libudev-dev libzip-dev ninja-build libcurl4-openssl-dev libcdio-dev
           sudo apt-get -y install libwayland-dev libdecor-0-dev libaudio-dev libjack-dev libsndio-dev libsamplerate0-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxkbcommon-dev libdrm-dev libgbm-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev fcitx-libs-dev
         if: runner.os == 'Linux'
 
@@ -53,7 +53,7 @@ jobs:
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
-          install: git make mingw-w64-x86_64-ccache mingw-w64-x86_64-cmake mingw-w64-x86_64-lua mingw-w64-x86_64-ninja mingw-w64-x86_64-SDL2 mingw-w64-x86_64-toolchain
+          install: git make mingw-w64-x86_64-ccache mingw-w64-x86_64-cmake mingw-w64-x86_64-lua mingw-w64-x86_64-ninja mingw-w64-x86_64-SDL2 mingw-w64-x86_64-toolchain mingw-w64-x86_64-libcdio
         if: matrix.config.shell == 'msys2 {0}'
 
       - name: Set up build environment (Windows, Visual Studio)
@@ -129,7 +129,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: flycast-${{ matrix.config.name }}
-          path: artifact/bin
+          path: |
+            artifact/bin
+            artifact/lib/libretro
 
       - name: Package app (macos)
         run: |
@@ -143,19 +145,15 @@ jobs:
           rm artifact/bin/flycast.exe
         if: matrix.config.name == 'x86_64-w64-mingw32'
 
-      - name: Configure AWS Credentials
-        id: aws-credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Setup Rclone
+        uses: AnimMouse/setup-rclone@v1
         with:
-          aws-access-key-id: AKIAJOZQS4H2PHQWYFCA
-          aws-secret-access-key: ${{ secrets.S3_SECRET_KEY }}
-          aws-region: us-east-2
-        if: github.repository == 'flyinghead/flycast' && github.event_name == 'push' && matrix.config.destDir != ''
+          rclone_config: ${{ secrets.RCLONE_CONFIG }}
 
       - name: Upload to S3
-        run: aws s3 sync artifact/bin s3://flycast-builds/${{ matrix.config.destDir }}/${GITHUB_REF#refs/}-$GITHUB_SHA --acl public-read --follow-symlinks
+        run: rclone copy artifact/bin scaleway:flycast-builds/${{ matrix.config.destDir }}/${GITHUB_REF#refs/}-$GITHUB_SHA
         shell: bash
-        if: ${{ steps.aws-credentials.outputs.aws-account-id != '' }}
+        if: github.repository == 'flyinghead/flycast' && github.event_name == 'push' && matrix.config.destDir != ''
 
       - name: Setup Sentry CLI
         uses: mathieu-bour/setup-sentry-cli@v2
