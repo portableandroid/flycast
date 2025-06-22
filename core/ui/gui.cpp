@@ -52,8 +52,10 @@
 #include "oslib/storage.h"
 #include <stb_image_write.h>
 #include "hw/pvr/Renderer_if.h"
+#include "hw/mem/addrspace.h"
 #if defined(USE_SDL)
 #include "sdl/sdl.h"
+#include "sdl/dreamlink.h"
 #endif
 
 #include "vgamepad.h"
@@ -209,7 +211,8 @@ void gui_initFonts()
     // Setup Dear ImGui style
 	ImGui::GetStyle() = ImGuiStyle{};
     ImGui::StyleColorsDark();
-    ImGui::GetStyle().TabRounding = 0;
+    ImGui::GetStyle().TabRounding = 5.0f;
+    ImGui::GetStyle().FrameRounding = 3.0f;
     ImGui::GetStyle().ItemSpacing = ImVec2(8, 8);		// from 8,4
     ImGui::GetStyle().ItemInnerSpacing = ImVec2(4, 6);	// from 4,4
 #if defined(__ANDROID__) || defined(TARGET_IPHONE) || defined(__SWITCH__)
@@ -434,7 +437,7 @@ static void gui_newFrame()
 	io.AddKeyEvent(ImGuiKey_GamepadDpadRight, ((kcode[0] & DC_DPAD_RIGHT) == 0));
 	io.AddKeyEvent(ImGuiKey_GamepadDpadUp, ((kcode[0] & DC_DPAD_UP) == 0));
 	io.AddKeyEvent(ImGuiKey_GamepadDpadDown, ((kcode[0] & DC_DPAD_DOWN) == 0));
-	
+
 	float analog;
 	analog = joyx[0] < 0 ? -(float)joyx[0] / 32768.f : 0.f;
 	io.AddKeyAnalogEvent(ImGuiKey_GamepadLStickLeft, analog > 0.1f, analog);
@@ -820,8 +823,8 @@ const char *maple_device_types[] =
 //	"Dreameye",
 };
 
-const char *maple_expansion_device_types[] = 
-{ 
+const char *maple_expansion_device_types[] =
+{
 	"None",
 	"Sega VMU",
 	"Vibration Pack",
@@ -1350,7 +1353,7 @@ static void controller_mapping_popup(const std::shared_ptr<GamepadDevice>& gamep
 				ImGui::SetColumnWidth(1, col_width);
 				continue;
 			}
-			sprintf(key_id, "key_id%d", systemMapping->key);
+			snprintf(key_id, sizeof(key_id), "key_id%d", systemMapping->key);
 			ImguiID _(key_id);
 
 			const char *game_btn_name = nullptr;
@@ -1835,7 +1838,7 @@ static void gui_settings_general()
         if (ImGui::Button("Reveal in Finder"))
         {
             char temp[512];
-            sprintf(temp, "open \"%s\"", get_writable_config_path("").c_str());
+            snprintf(temp, sizeof(temp), "open \"%s\"", get_writable_config_path("").c_str());
             system(temp);
         }
 #endif
@@ -1977,7 +1980,7 @@ static void gui_settings_controls(bool& maple_devices_changed)
 
 				ImGui::TableSetColumnIndex(2);
 				char port_name[32];
-				sprintf(port_name, "##mapleport%d", i);
+				snprintf(port_name, sizeof(port_name), "##mapleport%d", i);
 				ImguiID _(port_name);
 				ImGui::SetNextItemWidth(portComboWidth);
 				if (ImGui::BeginCombo(port_name, maple_ports[gamepad->maple_port() + 1]))
@@ -2032,6 +2035,10 @@ static void gui_settings_controls(bool& maple_devices_changed)
 #if defined(_WIN32) && !defined(TARGET_UWP)
 	OptionCheckbox("Use Raw Input", config::UseRawInput, "Supports multiple pointing devices (mice, light guns) and keyboards");
 #endif
+#ifdef USE_DREAMCASTCONTROLLER
+	OptionCheckbox("Use Physical VMU Memory", config::UsePhysicalVmuMemory,
+		"Enables direct read/write access to physical VMU memory via DreamPicoPort/DreamConn.");
+#endif
 
 	ImGui::Spacing();
 	header("Dreamcast Devices");
@@ -2051,7 +2058,7 @@ static void gui_settings_controls(bool& maple_devices_changed)
 
 				ImGui::TableSetColumnIndex(1);
 				char device_name[32];
-				sprintf(device_name, "##device%d", bus);
+				snprintf(device_name, sizeof(device_name), "##device%d", bus);
 				float w = ImGui::CalcItemWidth() / 3;
 				ImGui::PushItemWidth(w);
 				ImGui::SetNextItemWidth(mainComboWidth);
@@ -2087,7 +2094,7 @@ static void gui_settings_controls(bool& maple_devices_changed)
 				for (int port = 0; port < port_count; port++)
 				{
 					ImGui::TableSetColumnIndex(2 + port);
-					sprintf(device_name, "##device%d.%d", bus, port + 1);
+					snprintf(device_name, sizeof(device_name), "##device%d.%d", bus, port + 1);
 					ImguiID _(device_name);
 					ImGui::SetNextItemWidth(expComboWidth);
 					if (ImGui::BeginCombo(device_name, maple_expansion_device_name(config::MapleExpansionDevices[bus][port]), ImGuiComboFlags_None))
@@ -2109,7 +2116,7 @@ static void gui_settings_controls(bool& maple_devices_changed)
 				if (config::MapleMainDevices[bus] == MDT_LightGun)
 				{
 					ImGui::TableSetColumnIndex(3);
-					sprintf(device_name, "##device%d.xhair", bus);
+					snprintf(device_name, sizeof(device_name), "##device%d.xhair", bus);
 					ImguiID _(device_name);
 					u32 color = config::CrosshairColor[bus];
 					float xhairColor[4] {
@@ -2743,7 +2750,7 @@ static void gui_settings_network()
 				if (config::GGPOChatTimeoutToggle)
 				{
 					char chatTimeout[256];
-					sprintf(chatTimeout, "%d", (int)config::GGPOChatTimeout);
+					snprintf(chatTimeout, sizeof(chatTimeout), "%d", (int)config::GGPOChatTimeout);
 					ImGui::InputText("Chat Window Timeout (seconds)", chatTimeout, sizeof(chatTimeout), ImGuiInputTextFlags_CharsDecimal, nullptr, nullptr);
 					ImGui::SameLine();
 					ShowHelpMarker("Sets duration that chat window stays open after new message is received.");
@@ -2764,7 +2771,7 @@ static void gui_settings_network()
 				ShowHelpMarker("The server to connect to. Leave blank to find a server automatically on the default port");
 			}
 			char localPort[256];
-			sprintf(localPort, "%d", (int)config::LocalPort);
+			snprintf(localPort, sizeof(localPort), "%d", (int)config::LocalPort);
 			ImGui::InputText("Local Port", localPort, sizeof(localPort), ImGuiInputTextFlags_CharsDecimal, nullptr, nullptr);
 			ImGui::SameLine();
 			ShowHelpMarker("The local UDP port to use");
@@ -2776,7 +2783,7 @@ static void gui_settings_network()
 			ImGui::SameLine();
 			ShowHelpMarker("The peer to connect to. Leave blank to find a player automatically on the default port");
 			char localPort[256];
-			sprintf(localPort, "%d", (int)config::LocalPort);
+			snprintf(localPort, sizeof(localPort), "%d", (int)config::LocalPort);
 			ImGui::InputText("Local Port", localPort, sizeof(localPort), ImGuiInputTextFlags_CharsDecimal, nullptr, nullptr);
 			ImGui::SameLine();
 			ShowHelpMarker("The local UDP port to use");
@@ -2795,7 +2802,7 @@ static void gui_settings_network()
 			OptionCheckbox("Broadband Adapter Emulation", config::EmulateBBA,
 					"Emulate the Ethernet Broadband Adapter (BBA) instead of the Modem");
 		}
-		OptionCheckbox("Use DCNet (Experimental)", config::UseDCNet, "Connect to the experimental DCNet cloud service.");
+		OptionCheckbox("Use DCNet", config::UseDCNet, "Use the DCNet cloud service for Dreamcast Internet access.");
 		ImGui::InputText("ISP User Name", &config::ISPUsername.get(), ImGuiInputTextFlags_CharsNoBlank | ImGuiInputTextFlags_CallbackCharFilter,
 				[](ImGuiInputTextCallbackData *data) { return static_cast<int>(data->EventChar <= ' ' || data->EventChar > '~'); }, nullptr);
 		ImGui::SameLine();
@@ -2830,6 +2837,49 @@ static void gui_settings_advanced()
 				"Over/Underclock the main SH4 CPU. Default is 200 MHz. Other values may crash, freeze or trigger unexpected nuclear reactions.",
 				"%d MHz");
     }
+#ifdef GDB_SERVER
+	ImGui::Spacing();
+	header("Virtual memory addresses");
+	{
+		void *ram_base, *ram, *vram, *aram;
+		addrspace::getAddress(&ram_base, &ram, &vram, &aram);
+
+		ImGui::Text("Base Address: %p", ram_base);
+
+		if (ram == nullptr) {
+			const ImVec4 gray(0.75f, 0.75f, 0.75f, 1.f);
+			ImGui::TextColored(gray, "RAM adresses are not available until the emulation is started");
+		} else {
+			ImGui::Columns(3, "virtualMemoryAddress", false);
+			ImGui::Text("RAM: %p", ram);
+			ImGui::NextColumn();
+			ImGui::Text("VRAM64: %p", vram);
+			ImGui::NextColumn();
+			ImGui::Text("ARAM: %p", aram);
+			ImGui::Columns(1, nullptr, false);
+		}
+
+	}
+	ImGui::Spacing();
+	header("Debugging");
+	{
+		OptionCheckbox("Enable GDB", config::GDB, "GDB debugging support, disables Dynarec and dramatically reduces performance when a debugger is connected.");
+		OptionCheckbox("Wait for connection", config::GDBWaitForConnection, "Start emulation once the debugger is connected.");
+#ifndef __ANDROID
+		OptionCheckbox("Serial Console", config::SerialConsole, "Dump the Dreamcast serial console to stdout");
+		OptionCheckbox("Serial PTY", config::SerialPTY, "Requires the option \"Serial Console\" to work");
+#endif
+
+		static int gdbport = config::GDBPort;
+		if (ImGui::InputInt("GDB port", &gdbport))
+		{
+			config::GDBPort = gdbport;
+		}
+		const ImGuiStyle& style = ImGui::GetStyle();
+		ImGui::SameLine(0, style.ItemInnerSpacing.x);
+		ShowHelpMarker("Default port is 3263");
+	}
+#endif
 	ImGui::Spacing();
 #endif
     header("Other");
@@ -2837,7 +2887,7 @@ static void gui_settings_advanced()
     	OptionCheckbox("HLE BIOS", config::UseReios, "Force high-level BIOS emulation");
         OptionCheckbox("Multi-threaded emulation", config::ThreadedRendering,
         		"Run the emulated CPU and GPU on different threads");
-#ifndef __ANDROID
+#if !defined(__ANDROID) && !defined(GDB_SERVER)
         OptionCheckbox("Serial Console", config::SerialConsole,
         		"Dump the Dreamcast serial console to stdout");
 #endif
@@ -2848,7 +2898,6 @@ static void gui_settings_advanced()
 		}
         OptionCheckbox("Dump Textures", config::DumpTextures,
         		"Dump all textures into data/texdump/<game id>");
-
         bool logToFile = cfgLoadBool("log", "LogToFile", false);
 		if (ImGui::Checkbox("Log to File", &logToFile))
 			cfgSaveBool("log", "LogToFile", logToFile);
@@ -3268,7 +3317,7 @@ static void gui_display_content()
 		const int itemsPerLine = std::max<int>(totalWidth / (uiScaled(150) + ImGui::GetStyle().ItemSpacing.x), 1);
 		const float responsiveBoxSize = totalWidth / itemsPerLine - ImGui::GetStyle().FramePadding.x * 2;
 		const ImVec2 responsiveBoxVec2 = ImVec2(responsiveBoxSize, responsiveBoxSize);
-		
+
 		if (config::BoxartDisplayMode)
 			ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0.5f, 0.5f));
 		else
@@ -3737,7 +3786,7 @@ void gui_display_profiler()
 			ImGui::Unindent();
 		}
 	}
-	
+
 	for (const fc_profiler::ProfileThread* profileThread : fc_profiler::ProfileThread::s_allThreads)
 	{
 		fc_profiler::drawGraph(*profileThread);
