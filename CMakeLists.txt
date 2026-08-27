@@ -211,7 +211,7 @@ elseif(LIBRETRO)
 		include_directories(${import_libs_DIR}/classicboy/include
 				${import_libs_DIR}/libBlocksRuntime/include
 				${import_libs_DIR}/libcpufeatures/include
-				${import_libs_DIR}/libemu/include
+				${import_libs_DIR}/libemuCore/include
 				${import_libs_DIR}/libemuRetro/include
 				${import_libs_DIR}/libfex/include
 				${import_libs_DIR}/libpng/include
@@ -220,7 +220,7 @@ elseif(LIBRETRO)
 		# added imported libraries
 		add_library(lib_emu STATIC IMPORTED)
 		set_target_properties(lib_emu PROPERTIES IMPORTED_LOCATION
-				${import_libs_DIR}/libemu/${CFG_BUILD_TYPE}/${ANDROID_ABI}/libemu.a)
+				${import_libs_DIR}/libemuCore/${CFG_BUILD_TYPE}/${ANDROID_ABI}/libemuCore.a)
 
 		# added imported libraries
 		add_library(lib_emuRetro STATIC IMPORTED)
