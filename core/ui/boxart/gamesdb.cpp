@@ -39,11 +39,6 @@ bool TheGamesDb::initialize(const std::string& saveDirectory)
 	return true;
 }
 
-TheGamesDb::~TheGamesDb()
-{
-	http::term();
-}
-
 void TheGamesDb::copyFile(const std::string& from, const std::string& to)
 {
 	FILE *ffrom = nowide::fopen(from.c_str(), "rb");
@@ -81,13 +76,15 @@ json TheGamesDb::httpGet(const std::string& url)
 	std::vector<u8> receivedData;
 	int status = http::get(url, receivedData);
 	bool success = http::success(status);
-	if (status == 403)
-		// hit rate-limit cap
-		blackoutPeriod = getTimeMs() + 60 * 1000;
-	else if (!success)
+	if (status == 403 || status == 429) {
+		// monthly allowance reached
+		blackoutPeriod = getTimeMs() + 24 * 60 * 60 * 1000;
+		throw std::runtime_error("TheGamesDB monthly allowance reached. Pausing for 24 hours");
+	}
+	if (!success)
 		blackoutPeriod = getTimeMs() + 1000;
 	if (!success || receivedData.empty())
-		throw std::runtime_error("http error");
+		throw std::runtime_error(strprintf("http error %d", status));
 
 	std::string content((const char *)&receivedData[0], receivedData.size());
 	DEBUG_LOG(COMMON, "TheGameDb: received [%s]", content.c_str());
@@ -219,7 +216,7 @@ void TheGamesDb::parseBoxart(GameBoxart& item, const json& j, int gameId)
 		{
 			// Build the full URL and get from cache or download
 			std::string url = baseUrl + imagePath;
-			std::string filename = makeUniqueFilename("dummy.jpg");	// thegamesdb returns some images as png, but they are really jpeg
+			std::string filename = makeUniqueFilename(imagePath);
 			auto cached = boxartCache.find(url);
 			if (cached != boxartCache.end())
 			{
@@ -317,8 +314,8 @@ bool TheGamesDb::fetchGameInfo(GameBoxart& item, const std::string& url, const s
 
 void TheGamesDb::scrape(GameBoxart& item)
 {
-	if (item.searchName.empty())
-		// invalid rom or disk
+	if (item.searchName.empty() || item.arcade)
+		// invalid rom or disk, or arcade game
 		return;
 	fetchPlatforms();
 
@@ -395,8 +392,8 @@ void TheGamesDb::scrape(std::vector<GameBoxart>& items)
 				fetchByName(item);
 			else if (item.gamePath.empty())
 			{
-				std::string localPath = makeUniqueFilename("dreamcast_logo_grey.png");
-				std::string biosArtUrl{ "https://flyinghead.github.io/flycast-builds/dreamcast_logo_grey.png" };
+				std::string localPath = makeUniqueFilename("dreamcast_logo_grey.jpg");
+				std::string biosArtUrl{ "https://flyinghead.github.io/flycast-content/console/jpg/dreamcast_logo_grey.jpg" };
 				if (downloadImage(biosArtUrl, localPath)) {
 					item.setBoxartPath(localPath);
 					item.boxartUrl = biosArtUrl;

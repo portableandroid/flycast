@@ -43,6 +43,7 @@ public final class InputDeviceManager implements InputManager.InputDeviceListene
 
     public void startListening(Context applicationContext)
     {
+        knownDevices.clear();
         maple_port = 0;
         hasTouchscreen = applicationContext.getPackageManager().hasSystemFeature("android.hardware.touchscreen");
         if (hasTouchscreen)
@@ -208,6 +209,9 @@ public final class InputDeviceManager implements InputManager.InputDeviceListene
         List<Integer> fullAxes = new ArrayList<>();
         List<Integer> halfAxes = new ArrayList<>();
         for (InputDevice.MotionRange range : axes) {
+            if ((range.getSource() & InputDevice.SOURCE_CLASS_MASK) != InputDevice.SOURCE_CLASS_JOYSTICK)
+                // Ignore mouse/touchpad axes
+                continue;
             if (range.getMin() == 0)
                 halfAxes.add(range.getAxis());
             else

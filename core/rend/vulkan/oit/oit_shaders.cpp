@@ -83,6 +83,9 @@ void main()
 )";
 
 static const char OITShaderHeader[] = R"(
+#extension GL_EXT_buffer_reference : enable
+#extension GL_EXT_buffer_reference_uvec2 : enable
+
 precision highp float;
 
 layout (std140, set = 0, binding = 1) uniform FragmentShaderUniforms
@@ -91,11 +94,14 @@ layout (std140, set = 0, binding = 1) uniform FragmentShaderUniforms
 	vec4 colorClampMax;
 	vec4 sp_FOG_COL_RAM;
 	vec4 sp_FOG_COL_VERT;
-	vec4 ditherColorMax;
+	vec4 ditherDivisor;
 	float cp_AlphaTestValue;
 	float sp_FOG_DENSITY;
 	float shade_scale_factor;
 	uint pixelBufferSize;
+	// we can't use PixelBufferRef here, because it would have to be defined somewhere above this block,
+	// but also uvec2 lets us conveniently avoid emitting "OpCapability PhysicalStorageBufferAddresses" outside of BDA
+	uvec2 pixelBufferAddress;
 	uint viewportWidth;
 } uniformBuffer;
 
@@ -110,16 +116,23 @@ layout(set = 0, binding = 8) buffer PixelCounter_ {
 OIT_POLY_PARAM
 R"(
 
+#if USE_BDA == 1
+layout(buffer_reference, buffer_reference_align = 16, std430) coherent restrict buffer PixelBufferRef {
+	Pixel pixels[];
+};
+#define PixelBuffer PixelBufferRef(uniformBuffer.pixelBufferAddress)
+#else
 layout (set = 0, binding = 7, std430) coherent restrict buffer PixelBuffer_ {
 	Pixel pixels[];
 } PixelBuffer;
+#endif
 
 uint getNextPixelIndex()
 {
 	uint index = atomicAdd(PixelCounter.buffer_index, 1);
-	// we should be able to simply use PixelBuffer.pixels.length()
-	// but a regression in the adreno 600 driver (v502) forces us
-	// to use a uniform.
+	// If USE_BDA == 1, PixelBuffer.pixels.length() would fail to compile.
+	// However, even outside of BDA, a regression in the adreno 600 driver (v502) forces us
+	// to use a uniform anyway.
 	if (index >= uniformBuffer.pixelBufferSize)
 		// Buffer overflow
 		discard;
@@ -260,16 +273,10 @@ void main()
 		vec4 texcol;
 		#if pp_TwoVolumes == 1
 			if (area1)
-				#if pp_Palette == 0
-					#if DIV_POS_Z == 1
-						texcol = texture(tex1, vtx_uv1);
-					#else
-						texcol = textureProj(tex1, vec3(vtx_uv1, vtx_uv.z));
-					#endif
-				#elif pp_Palette == 1
-					texcol = palettePixel(tex1, vec3(vtx_uv1, vtx_uv.z));
+				#if DIV_POS_Z == 1
+					texcol = texture(tex1, vtx_uv1);
 				#else
-					texcol = palettePixelBilinear(tex1, vec3(vtx_uv1, vtx_uv.z));
+					texcol = textureProj(tex1, vec3(vtx_uv1, vtx_uv.z));
 				#endif
 			else
 		#endif
@@ -528,16 +535,14 @@ vec4 resolveAlphaBlend(ivec2 coords) {
 
 #if DITHERING == 1
 	float ditherTable[16] = float[](
-		 0.9375,  0.1875,  0.75,  0.,   
-		 0.4375,  0.6875,  0.25,  0.5,
-		 0.8125,  0.0625,  0.875, 0.125,
-		 0.3125,  0.5625,  0.375, 0.625	
+		5., 13.,  7., 15.,
+		9.,  1., 11.,  3.,
+		6., 14.,  4., 12.,
+		10., 2.,  8.,  0.
 	);
 	float r = ditherTable[int(mod(gl_FragCoord.y, 4.)) * 4 + int(mod(gl_FragCoord.x, 4.))];
-	// 31 for 5-bit color, 63 for 6 bits, 15 for 4 bits
-	finalColor += r / uniformBuffer.ditherColorMax;
-	// avoid rounding
-	finalColor = floor(finalColor * 255.) / 255.;
+	vec4 dv = vec4(r, r, r, 1.) / uniformBuffer.ditherDivisor;
+	finalColor = clamp(floor(finalColor * 255. + dv) / 255., 0., 1.);
 #endif
 	return finalColor;
 	
@@ -766,6 +771,7 @@ vk::UniqueShaderModule OITShaderManager::compileShader(const FragmentShaderParam
 		.addConstant("pp_Palette", params.palette)
 		.addConstant("DIV_POS_Z", (int)params.divPosZ)
 		.addConstant("PASS", (int)params.pass)
+		.addConstant("USE_BDA", (int)params.useBDA)
 		.addSource(GouraudSource)
 		.addSource(OITShaderHeader)
 		.addSource(OITFragmentShaderTop)
@@ -774,11 +780,12 @@ vk::UniqueShaderModule OITShaderManager::compileShader(const FragmentShaderParam
 	return ShaderCompiler::Compile(vk::ShaderStageFlagBits::eFragment, src.generate());
 }
 
-vk::UniqueShaderModule OITShaderManager::compileFinalShader(bool dithering)
+vk::UniqueShaderModule OITShaderManager::compileShader(const FinalShaderParams& params)
 {
 	VulkanSource src;
-	src.addConstant("MAX_PIXELS_PER_FRAGMENT", config::PerPixelLayers)
-		.addConstant("DITHERING", dithering)
+	src.addConstant("MAX_PIXELS_PER_FRAGMENT", maxLayers)
+		.addConstant("DITHERING", (int)params.dithering)
+		.addConstant("USE_BDA", (int)params.useBDA)
 		.addSource(OITShaderHeader)
 		.addSource(OITFinalShaderSource);
 
@@ -818,10 +825,22 @@ vk::UniqueShaderModule OITShaderManager::compileModVolFragmentShader(bool divPos
 vk::UniqueShaderModule OITShaderManager::compileShader(const TrModVolShaderParams& params)
 {
 	VulkanSource src;
-	src.addConstant("MAX_PIXELS_PER_FRAGMENT", config::PerPixelLayers)
+	src.addConstant("MAX_PIXELS_PER_FRAGMENT", maxLayers)
 		.addConstant("MV_MODE", (int)params.mode)
 		.addConstant("DIV_POS_Z", (int)params.divPosZ)
+		.addConstant("USE_BDA", (int)params.useBDA)
 		.addSource(OITShaderHeader)
 		.addSource(OITTranslucentModvolShaderSource);
 	return ShaderCompiler::Compile(vk::ShaderStageFlagBits::eFragment, src.generate());
+}
+
+void OITShaderManager::checkMaxLayers()
+{
+	int layers = std::clamp<int>(config::PerPixelLayers, 1, 256);
+	if (maxLayers != layers)
+	{
+		maxLayers = layers;
+		trModVolShaders.clear();
+		finalFragmentShaders.clear();
+	}
 }

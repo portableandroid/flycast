@@ -21,6 +21,7 @@
 #include "../game_scanner.h"
 #include "oslib/oslib.h"
 #include "cfg/option.h"
+#include "arcade_scraper.h"
 #include <chrono>
 
 GameBoxart Boxart::getBoxart(const GameMedia& media)
@@ -50,6 +51,7 @@ GameBoxart Boxart::getBoxartAndLoad(const GameMedia& media)
 			{
 				boxart.busy = it->second.busy = true;
 				boxart.gamePath = media.path;
+				boxart.arcade = media.arcade;
 				toFetch.push_back(boxart);
 			}
 		}
@@ -60,6 +62,7 @@ GameBoxart Boxart::getBoxartAndLoad(const GameMedia& media)
 			boxart.name = media.name;
 			boxart.searchName = media.gameName;	// for arcade games
 			boxart.busy = true;
+			boxart.arcade = media.arcade;
 			games[boxart.fileName] = boxart;
 			toFetch.push_back(boxart);
 		}
@@ -71,10 +74,20 @@ GameBoxart Boxart::getBoxartAndLoad(const GameMedia& media)
 void Boxart::fetchBoxart()
 {
 	if (fetching.valid() && fetching.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
-		fetching.get();
+	{
+		try {
+			fetching.get();
+		} catch (const std::exception& e) {
+			ERROR_LOG(COMMON, "Boxart scraper thread exception: %s", e.what());
+		} catch (...) {
+			ERROR_LOG(COMMON, "Boxart scraper thread unknown exception");
+		}
+	}
 	if (fetching.valid())
 		return;
 	if (toFetch.empty())
+		return;
+	if (getTimeMs() < pauseUntil)
 		return;
 	fetching = std::async(std::launch::async, [this]() {
 		ThreadName _("BoxArt-scraper");
@@ -83,14 +96,21 @@ void Boxart::fetchBoxart()
 			offlineScraper = std::unique_ptr<Scraper>(new OfflineScraper());
 			offlineScraper->initialize(getSaveDirectory());
 		}
-		if (config::FetchBoxart && scraper == nullptr)
+		if (config::FetchBoxart)
 		{
-			scraper = std::unique_ptr<Scraper>(new TheGamesDb());
-			if (!scraper->initialize(getSaveDirectory()))
+			if (scraper == nullptr)
 			{
-				ERROR_LOG(COMMON, "thegamesdb scraper initialization failed");
-				scraper.reset();
-				return;
+				scraper = std::unique_ptr<Scraper>(new TheGamesDb());
+				if (!scraper->initialize(getSaveDirectory()))
+				{
+					ERROR_LOG(COMMON, "thegamesdb scraper initialization failed");
+					scraper.reset();
+					return;
+				}
+			}
+			if (arcadeScraper == nullptr) {
+				arcadeScraper = std::make_unique<ArcadeScraper>();
+				arcadeScraper->initialize(getSaveDirectory());
 			}
 		}
 		std::vector<GameBoxart> boxart;
@@ -101,7 +121,15 @@ void Boxart::fetchBoxart()
 			toFetch.erase(toFetch.begin(), toFetch.begin() + size);
 		}
 		DEBUG_LOG(COMMON, "Scraping %d games", (int)boxart.size());
-		offlineScraper->scrape(boxart);
+		for (GameBoxart& b : boxart)
+		{
+			if (b.parsed)
+				continue;
+			offlineScraper->scrape(b);
+			if (b.parsed)
+				databaseDirty = true;
+		}
+		if (databaseDirty)
 		{
 			std::lock_guard<std::mutex> guard(mutex);
 			for (GameBoxart& b : boxart)
@@ -110,12 +138,12 @@ void Boxart::fetchBoxart()
 					if (!config::FetchBoxart || b.scraped)
 						b.busy = false;
 					games[b.fileName] = b;
-					databaseDirty = true;
 				}
 		}
 		if (config::FetchBoxart)
 		{
 			try {
+				arcadeScraper->scrape(boxart);
 				scraper->scrape(boxart);
 				{
 					std::lock_guard<std::mutex> guard(mutex);
@@ -128,7 +156,7 @@ void Boxart::fetchBoxart()
 				databaseDirty = true;
 			} catch (const std::runtime_error& e) {
 				if (*e.what() != '\0')
-					INFO_LOG(COMMON, "thegamesdb error: %s", e.what());
+					WARN_LOG(COMMON, "thegamesdb error: %s", e.what());
 				{
 					// put back failed items into toFetch array
 					std::lock_guard<std::mutex> guard(mutex);
@@ -146,6 +174,9 @@ void Boxart::fetchBoxart()
 				}
 			}
 		}
+		if (!databaseDirty)
+			// No progress so pause for 10 s
+			pauseUntil = getTimeMs() + 10 * 1000;
 		saveDatabase();
 	});
 }
@@ -154,13 +185,8 @@ void Boxart::saveDatabase()
 {
 	if (!databaseDirty)
 		return;
-	std::string db_name = getSaveDirectory() + DB_NAME;
-	FILE *file = nowide::fopen(db_name.c_str(), "wt");
-	if (file == nullptr)
-	{
-		WARN_LOG(COMMON, "Can't save boxart database to %s: error %d", db_name.c_str(), errno);
-		return;
-	}
+	std::string basePath = getSaveDirectory();
+	std::string db_name = basePath + DB_NAME;
 	DEBUG_LOG(COMMON, "Saving boxart database to %s", db_name.c_str());
 
 	json array;
@@ -168,9 +194,15 @@ void Boxart::saveDatabase()
 		std::lock_guard<std::mutex> guard(mutex);
 		for (const auto& game : games)
 			if (game.second.scraped || game.second.parsed)
-				array.push_back(game.second.to_json());
+				array.push_back(game.second.to_json(basePath));
 	}
-	std::string serialized = array.dump(4);
+	std::string serialized = array.dump(4, ' ', false, json::error_handler_t::replace);
+
+	FILE *file = nowide::fopen(db_name.c_str(), "wt");
+	if (file == nullptr) {
+		WARN_LOG(COMMON, "Can't save boxart database to %s: error %d", db_name.c_str(), errno);
+		return;
+	}
 	fwrite(serialized.c_str(), 1, serialized.size(), file);
 	fclose(file);
 	databaseDirty = false;
@@ -207,7 +239,7 @@ void Boxart::loadDatabase()
 		json v = json::parse(all_data);
 		for (const auto& o : v)
 		{
-			GameBoxart game(o);
+			GameBoxart game(o, save_dir);
 			games[game.fileName] = game;
 		}
 	} catch (const json::exception& e) {

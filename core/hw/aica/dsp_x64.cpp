@@ -26,25 +26,13 @@
 #include "aica.h"
 #include "aica_if.h"
 #include "oslib/virtmem.h"
+#include "stdclass.h"
 
 namespace aica::dsp
 {
 
 constexpr size_t CodeBufferSize = 32_KB;
-#if defined(_WIN32)
-static u8 *CodeBuffer;
-#else
-alignas(4096) static u8 CodeBuffer[CodeBufferSize]
-	#if defined(__OpenBSD__)
-		__attribute__((section(".openbsd.mutable")));
-	#elif defined(__unix__)
-		__attribute__((section(".text")));
-	#elif defined(__APPLE__)
-		__attribute__((section("__TEXT,.text")));
-	#else
-		#error CodeBuffer code section unknown
-	#endif
-#endif
+DECLARE_CODE_CACHE(CodeBuffer, CodeBufferSize)
 static u8 *pCodeBuffer;
 static ptrdiff_t rx_offset;
 
@@ -416,7 +404,13 @@ void recompile()
 {
 	virtmem::jit_set_exec(pCodeBuffer, CodeBufferSize, false);
 	X64DSPAssembler assembler(pCodeBuffer, CodeBufferSize);
-	assembler.Compile(&state);
+	try {
+		assembler.Compile(&state);
+	} catch (const Xbyak::Error& e) {
+		virtmem::jit_set_exec(pCodeBuffer, CodeBufferSize, true);
+		ERROR_LOG(AICA_ARM, "Xbyak error: %s", e.what());
+		throw FlycastException(strprintf("DSP recompilation error: %s", e.what()));
+	}
 	virtmem::jit_set_exec(pCodeBuffer, CodeBufferSize, true);
 }
 
